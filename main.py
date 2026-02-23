@@ -1,119 +1,119 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-from datetime import date, datetime
+from datetime import datetime, date
+from streamlit_gsheets import GSheetsConnection
 
 # --- 1. پیج سیٹنگز اور برانڈنگ ---
-st.set_page_config(page_title="جامعہ ملیہ اسلامیہ فیصل آباد", layout="wide")
+st.set_page_config(page_title="جامعہ پورٹل", layout="wide")
 
 # مینو اور فوٹر چھپانے کے لیے CSS
-hide_style = """
-    <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stApp { direction: rtl; text-align: right; }
-    </style>
-"""
-st.markdown(hide_style, unsafe_allow_html=True)
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            .stApp { direction: rtl; text-align: right; }
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- 2. گوگل شیٹ سے کنکشن ---
+# --- 2. گوگل شیٹ کنکشن ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# ڈیٹا لوڈ کرنے کا فنکشن
-def load_data(sheet_name):
+def load_sheet_data(worksheet_name):
     try:
-        return conn.read(worksheet=sheet_name, ttl="0")
+        return conn.read(worksheet=worksheet_name, ttl="0")
     except:
-        # اگر شیٹ موجود نہ ہو تو خالی فریم بنانا
         return pd.DataFrame()
 
-# --- 3. ٹائٹل اور لوگو ---
-st.markdown("<h1 style='text-align: center; color: #1e5631;'>🕌 جامعہ ملیہ اسلامیہ فیصل آباد</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>آن لائن تعلیمی و مالیاتی پورٹل</p>", unsafe_allow_html=True)
-st.divider()
+def save_to_sheet(df, worksheet_name):
+    conn.update(worksheet=worksheet_name, data=df)
+    st.success("ڈیٹا کامیابی سے محفوظ ہو گیا!")
+
+# --- 3. ڈیٹا لسٹیں ---
+surahs_urdu = ["الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة", "الأنعام", "الأعراف", "الأنفال", "التوبة", "يونس", "هود", "يوسف", "الرعد", "إبراهيم", "الحجر", "النحل", "الإسراء", "الكهف", "مريم", "طه", "الأنبياء", "الحج", "المؤمنون", "النور", "الفرقان", "الشعراء", "النمل", "القصص", "العنكبوت", "الروم", "لقمان", "السجدة", "الأحزاب", "سبأ", "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر", "فصلت", "الشورى", "الزخرف", "الدخان", "الجاثية", "الأحقاف", "محمد", "الفتح", "الحجرات", "ق", "الذاريات", "الطور", "النجم", "القمر", "الرحمن", "الواقعة", "الحديد", "المجادلة", "الحشر", "الممتحنة", "الصف", "الجمعة", "المنافقون", "التغابن", "الطلاق", "التحريم", "الملك", "القلم", "الحاقة", "المعارج", "نوح", "الجن", "المزمل", "المدثر", "القيامة", "الإنسان", "المرسلات", "النبأ", "النازعات", "عبس", "التكوير", "الإنفطار", "المطففين", "الإنشقاق", "البروج", "الطارق", "الأعلى", "الغاشية", "الفجر", "البلد", "الشمس", "الليل", "الضحى", "الشرح", "التين", "العلق", "القدر", "البينة", "الزلزلة", "العاديات", "القارعة", "التکاثر", "العصر", "الهمزة", "الفيل", "قریش", "الماعون", "الکوثر", "الكافرون", "النصر", "المسد", "الإخلاص", "الفلق", "الناس"]
+paras = [f"پارہ {i}" for i in range(1, 31)]
 
 # --- 4. لاگ ان سسٹم ---
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
+if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
     col1, col2, col3 = st.columns([1,1.5,1])
     with col2:
-        st.subheader("لاگ ان پینل")
-        user = st.text_input("صارف کا نام")
-        pw = st.text_input("پاسورڈ", type="password")
+        st.header("🕌 لاگ ان")
+        u = st.text_input("صارف کا نام")
+        p = st.text_input("پاسورڈ", type="password")
         if st.button("داخل ہوں"):
-            # سادہ لاگ ان (آپ اسے شیٹ سے بھی جوڑ سکتے ہیں)
-            if (user == "admin" and pw == "jamia123") or (user == "staff" and pw == "staff123"):
-                st.session_state.logged_in = True
-                st.session_state.username = user
-                st.rerun()
+            # اساتذہ کا ڈیٹا شیٹ سے چیک کریں
+            teachers_df = load_sheet_data("Teachers")
+            if not teachers_df.empty:
+                user_match = teachers_df[(teachers_df['name'] == u) & (teachers_df['password'] == p)]
+                if not user_match.empty:
+                    st.session_state.logged_in, st.session_state.username = True, u
+                    st.session_state.user_type = "admin" if u == "admin" else "teacher"
+                    st.rerun()
+                else: st.error("غلط معلومات")
             else:
-                st.error("غلط معلومات")
+                # اگر شیٹ خالی ہے تو ڈیفالٹ ایڈمن
+                if u == "admin" and p == "jamia123":
+                    st.session_state.logged_in, st.session_state.username = True, u
+                    st.session_state.user_type = "admin"
+                    st.rerun()
 else:
-    # --- 5. مین مینو ---
-    menu = ["📝 تعلیمی اندراج", "💰 اخراجات", "📊 رپورٹ", "🕒 حاضری اساتذہ"]
-    choice = st.sidebar.radio("مینو", menu)
+    # مینو
+    if st.session_state.user_type == "admin":
+        menu = ["📊 تعلیمی رپورٹ", "🕒 اساتذہ کا ریکارڈ", "⚙️ انتظامی کنٹرول"]
+    else:
+        menu = ["📝 تعلیمی اندراج", "📩 رخصت کی درخواست", "🕒 میری حاضری"]
 
-    # --- تعلیمی اندراج کا حصہ ---
-    if choice == "📝 تعلیمی اندراج":
-        st.header("روزانہ تعلیمی ریکارڈ")
-        with st.form("edu_form", clear_on_submit=True):
-            s_name = st.text_input("طالب علم کا نام")
-            surah = st.text_input("سورت / پارہ")
-            lesson_detail = st.text_area("سبق کی تفصیل")
-            errors = st.number_input("غلطیاں / اٹکن", min_value=0)
-            status = st.selectbox("حاضری", ["حاضر", "غیر حاضر", "رخصت"])
-            entry_date = st.date_input("تاریخ", date.today())
-            
-            if st.form_submit_button("محفوظ کریں"):
-                new_data = pd.DataFrame([{
-                    "تاریخ": entry_date.strftime("%Y-%m-%d"),
-                    "نام": s_name,
-                    "سبق": surah,
-                    "تفصیل": lesson_detail,
-                    "غلطیاں": errors,
-                    "حاضری": status,
-                    "درج کنندہ": st.session_state.username
-                }])
-                # گوگل شیٹ میں ڈیٹا بھیجنا
-                old_data = load_data("Education")
-                updated_df = pd.concat([old_data, new_data], ignore_index=True)
-                conn.update(worksheet="Education", data=updated_df)
-                st.success("ریکارڈ گوگل شیٹ میں محفوظ ہو گیا!")
+    m = st.sidebar.radio("مینو", menu)
 
-    # --- اخراجات کا حصہ ---
-    elif choice == "💰 اخراجات":
-        st.header("جامعہ کے اخراجات")
-        with st.form("exp_form", clear_on_submit=True):
-            item = st.text_input("اشیاء کا نام")
-            amount = st.number_input("رقم", min_value=0.0)
-            buyer = st.text_input("خرچ کرنے والا", value=st.session_state.username)
-            exp_date = st.date_input("تاریخ", date.today())
-            
-            if st.form_submit_button("خرچ محفوظ کریں"):
-                exp_entry = pd.DataFrame([{
-                    "تاریخ": exp_date.strftime("%Y-%m-%d"),
-                    "چیز": item,
-                    "رقم": amount,
-                    "نام": buyer
-                }])
-                old_exp = load_data("Expenses")
-                updated_exp = pd.concat([old_exp, exp_entry], ignore_index=True)
-                conn.update(worksheet="Expenses", data=updated_exp)
-                st.success("خرچ محفوظ کر لیا گیا۔")
+    # --- استاد: تعلیمی اندراج ---
+    if m == "📝 تعلیمی اندراج":
+        st.header("📖 تعلیمی اندراج")
+        students_df = load_sheet_data("Students")
+        if not students_df.empty:
+            my_students = students_df[students_df['teacher_name'] == st.session_state.username]
+            for index, row in my_students.iterrows():
+                s, f = row['name'], row['father_name']
+                with st.expander(f"👤 طالب علم: {s} ولد {f}"):
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        su = st.selectbox("سورت", surahs_urdu, key=f"su_{s}")
+                        att = st.radio("حاضری", ["حاضر", "غیر حاضر"], key=f"at_{s}")
+                    with c2:
+                        sp = st.selectbox("سبقی پارہ", paras, key=f"sp_{s}")
+                        sa = st.number_input("اٹکن", 0, key=f"sa_{s}")
+                    with c3:
+                        mp = st.selectbox("منزل پارہ", paras, key=f"mp_{s}")
+                        mm = st.number_input("غلطی", 0, key=f"mm_{s}")
+                    
+                    if st.button(f"محفوظ کریں: {s}", key=f"btn_{s}"):
+                        new_rec = pd.DataFrame([{
+                            "r_date": date.today().strftime("%Y-%m-%d"),
+                            "s_name": s, "surah": su, "sq_p": sp, "sq_a": sa, "m_p": mp, "m_m": mm, "attendance": att, "t_name": st.session_state.username
+                        }])
+                        records_df = load_sheet_data("HifzRecords")
+                        updated_df = pd.concat([records_df, new_rec], ignore_index=True)
+                        save_to_sheet(updated_df, "HifzRecords")
 
-    # --- رپورٹ کا حصہ ---
-    elif choice == "📊 رپورٹ":
-        st.header("مکمل ریکارڈ")
-        tab1, tab2 = st.tabs(["تعلیمی رپورٹ", "اخراجات رپورٹ"])
+    # --- ایڈمن: رپورٹ ---
+    elif m == "📊 تعلیمی رپورٹ":
+        st.header("تعلیمی رپورٹ")
+        df = load_sheet_data("HifzRecords")
+        st.dataframe(df, use_container_width=True)
+
+    # --- انتظامی کنٹرول ---
+    elif m == "⚙️ انتظامی کنٹرول":
+        tab1, tab2 = st.tabs(["اساتذہ", "طلباء"])
         with tab1:
-            st.dataframe(load_data("Education"), use_container_width=True)
-        with tab2:
-            st.dataframe(load_data("Expenses"), use_container_width=True)
+            t_df = load_sheet_data("Teachers")
+            st.dataframe(t_df)
+            un = st.text_input("نام استاد"); up = st.text_input("پاسورڈ")
+            if st.button("استاد شامل کریں"):
+                new_t = pd.DataFrame([{"name": un, "password": up}])
+                updated_t = pd.concat([t_df, new_t], ignore_index=True)
+                save_to_sheet(updated_t, "Teachers")
 
-    # لاگ آؤٹ
     if st.sidebar.button("🚪 لاگ آؤٹ"):
-        st.session_state.logged_in = False
-        st.rerun()
+        st.session_state.logged_in = False; st.rerun()
