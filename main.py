@@ -25,7 +25,17 @@ def load_sheet_data(worksheet_name):
         return conn.read(worksheet=worksheet_name, ttl="0")
     except:
         return pd.DataFrame()
-
+def save_to_sheet(df, worksheet_name):
+    try:
+        # ڈیٹا کو صاف ستھرا کر کے اپ لوڈ کرنا
+        df = df.fillna("") # خالی خانوں کو سیٹ کرنا
+        conn.update(worksheet=worksheet_name, data=df)
+        st.cache_data.clear() # ایپ کو تازہ کرنا
+        st.success("✅ ڈیٹا کامیابی سے محفوظ ہو گیا!")
+        st.balloons() # کامیابی کی خوشی میں غبارے
+    except Exception as e:
+        st.error(f"❌ ڈیٹا محفوظ کرنے میں مسئلہ آیا: {e}")
+        st.info("براہِ کرم چیک کریں کہ گوگل شیٹ میں 'Editor' کی اجازت دی گئی ہے یا نہیں۔")
 def save_to_sheet(df, worksheet_name):
     conn.update(worksheet=worksheet_name, data=df)
     st.success("ڈیٹا کامیابی سے محفوظ ہو گیا!")
@@ -117,3 +127,4 @@ else:
 
     if st.sidebar.button("🚪 لاگ آؤٹ"):
         st.session_state.logged_in = False; st.rerun()
+
