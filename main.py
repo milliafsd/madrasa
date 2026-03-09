@@ -202,8 +202,7 @@ else:
                                 mm = st.number_input("غلطی ", 0, key=f"mm_{s}")
                         else:
                             su, af, sp, sa, sm, mp, ma, mm = att, "-", att, 0, 0, att, 0, 0
-
-                                if st.button(f"محفوظ کریں: {s}"):
+            if st.button(f"محفوظ کریں: {s}"):
             try:
                 # ڈیٹا داخل کرنے کی کوشش
                 c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, surah, sq_m, m_m, attendance) 
@@ -344,4 +343,5 @@ try:
 except:
     # اگر کالم پہلے سے موجود ہے تو یہ حصہ کچھ نہیں کرے گا
     pass
+
 
