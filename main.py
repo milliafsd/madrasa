@@ -82,7 +82,7 @@ if not st.session_state.logged_in:
 else:
     # مینو کی ترتیب
     if st.session_state.user_type == "admin":
-        menu = ["📊 یومیہ تعلیمی رپورٹ", "📊 کلاس وائز رپورٹ", "📜 ماہانہ رزلٹ کارڈ", "🕒 اساتذہ کا ریکارڈ", "🏛️ مہتمم پینل (رخصت)", "⚙️ انتظامی کنٹرول"]
+        menu = ["📊 یومیہ تعلیمی رپورٹ", "📜 ماہانہ رزلٹ کارڈ", "🕒 اساتذہ کا ریکارڈ", "🏛️ مہتمم پینل (رخصت)", "⚙️ انتظامی کنٹرول"]
     else:
         menu = ["📝 تعلیمی اندراج", "📩 درخواستِ رخصت", "🕒 میری حاضری"]
         
@@ -225,39 +225,6 @@ else:
             st.dataframe(att_df, use_container_width=True, hide_index=True)
         else: st.info("حاضری کا کوئی ریکارڈ موجود نہیں ہے۔")
 
-if m == "📊 کلاس وائز رپورٹ":
-        st.header("📈 کلاس وار کارکردگی (ایڈمن)")
-        
-        # تمام اساتذہ کی لسٹ لانا
-        teachers = [t[0] for t in c.execute("SELECT DISTINCT teacher_name FROM students").fetchall()]
-        selected_t = st.selectbox("استاد (کلاس) منتخب کریں", teachers)
-        
-        col1, col2 = st.columns(2)
-        
-        # --- ہفتہ وار ٹاپ 3 (Top 3 Students) ---
-        with col1:
-            st.subheader("🏆 بہترین کارکردگی (ٹاپ 3)")
-            # کم ترین غلطیوں کی بنیاد پر رینکنگ
-            rank_data = c.execute("""SELECT s_name, SUM(sq_m + m_m) as total_errors 
-                                     FROM hifz_records 
-                                     WHERE t_name=? AND attendance='حاضر' 
-                                     GROUP BY s_name ORDER BY total_errors ASC LIMIT 3""", (selected_t,)).fetchall()
-            if rank_data:
-                for i, (name, err) in enumerate(rank_data):
-                    st.success(f"{i+1}. {name} (کل غلطیاں: {err})")
-            else: st.info("ڈیٹا دستیاب نہیں۔")
-
-        # --- کارکردگی گراف (Performance Graph) ---
-        with col2:
-            st.subheader("📊 کلاس گراف")
-            graph_query = f"SELECT r_date, SUM(sq_m + m_m) FROM hifz_records WHERE t_name='{selected_t}' GROUP BY r_date"
-            import pandas as pd
-            df = pd.read_sql_query(graph_query, conn)
-            if not df.empty:
-                df.columns = ['تاریخ', 'مجموعی غلطیاں']
-                st.line_chart(df.set_index('تاریخ'))
-            else: st.info("گراف کے لیے ڈیٹا ناکافی ہے۔")
-                
     # ================= TEACHER SECTION =================
    # --- استاد کا مینیو: تعلیمی اندراج ---
 if m == "📝 تعلیمی اندراج":
@@ -395,6 +362,7 @@ st.sidebar.divider()
 if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
