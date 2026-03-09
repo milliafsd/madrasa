@@ -257,79 +257,85 @@ else:
                 st.info("گراف دکھانے کے لیے 'حاضر' بچوں کا ڈیٹا دستیاب نہیں ہے۔")
 
     # --- اساتذہ کا رخصت اور نوٹیفیکیشن پورٹل ---
-    if m == "📩 درخواستِ رخصت":
-        st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
 
-        # 🔔 نوٹیفیکیشن چیک کرنا (اگر کوئی رخصت منظور یا مسترد ہوئی ہو)
-        notifications = c.execute("""SELECT id, status, start_date FROM leave_requests 
-                                   WHERE t_name=? AND status != 'پینڈنگ (زیرِ غور)' 
-                                   AND notification_seen = 0""", (st.session_state.username,)).fetchall()
-
-        for n_id, n_status, n_date in notifications:
-            if "منظور" in n_status:
-                st.balloons() # جشن کا احساس دلانے کے لیے
-                st.success(f"🎊 خوشخبری! آپ کی مورخہ {n_date} کی رخصت **منظور** کر لی گئی ہے۔")
+    elif m == "🕒 اساتذہ کا ریکارڈ":
+        st.header("🕒 اساتذہ کی حاضری و رخصت کا ریکارڈ")
+        
+        tab_att, tab_leaves = st.tabs(["📅 اساتذہ کی حاضری", "📩 رخصت کا ریکارڈ"])
+        
+        with tab_att:
+            st.subheader("اساتذہ کی روزانہ کی حاضری")
+            sel_date = st.date_input("تاریخ منتخب کریں", date.today(), key="admin_att_date")
+            
+            # حاضری کا ڈیٹا لانا
+            att_query = f"""
+                SELECT t.name as استاد, a.arrival as آمد, a.departure as رخصت 
+                FROM teachers t 
+                LEFT JOIN t_attendance a ON t.name = a.t_name AND a.a_date = '{sel_date}'
+                WHERE t.name != 'admin'
+            """
+            att_df = pd.read_sql_query(att_query, conn)
+            
+            if not att_df.empty:
+                # غیر حاضر اساتذہ کو سرخ رنگ میں دکھانا
+                st.dataframe(att_df.style.highlight_null(null_color="red"), use_container_width=True)
             else:
-                st.error(f"⚠️ اطلاع: آپ کی مورخہ {n_date} کی رخصت کی درخواست **مسترد** کر دی گئی ہے۔")
+                st.info("اس تاریخ کا کوئی ریکارڈ موجود نہیں ہے۔")
 
-            # نوٹیفیکیشن کو 'دیکھ لیا گیا' (Seen) مارک کریں
-            if st.button(f"سمجھ گیا (آئی ڈی: {n_id})", key=f"n_{n_id}"):
-                c.execute("UPDATE leave_requests SET notification_seen = 1 WHERE id=?", (n_id,))
-                conn.commit()
-                st.rerun()
-
-        st.divider()
-
-        tab_apply, tab_status = st.tabs(["✍️ نئی درخواست", "📜 میری رخصتوں کی تاریخ"])
-
-        with tab_apply:
-            with st.form("teacher_leave_form", clear_on_submit=True):
-                col1, col2 = st.columns(2)
-                with col1:
-                    l_type = st.selectbox("رخصت کی نوعیت", ["ضروری کام", "بیماری", "ہنگامی رخصت", "دیگر"])
-                    s_date = st.date_input("تاریخ آغاز", date.today())
-                with col2:
-                    days = st.number_input("کتنے دن؟", 1, 15)
-                    e_date = s_date + timedelta(days=days-1)
-                    st.write(f"واپسی کی تاریخ: **{e_date}**")
-
-                reason = st.text_area("تفصیلی وجہ درج کریں")
-
-                if st.form_submit_button("درخواست ارسال کریں 🚀"):
-                    if reason:
-                        c.execute("""INSERT INTO leave_requests (t_name, l_type, start_date, days, reason, status, notification_seen) 
-                                  VALUES (?,?,?,?,?,?,?)""", 
-                                  (st.session_state.username, l_type, s_date, days, reason, "پینڈنگ (زیرِ غور)", 0))
-                        conn.commit()
-                        st.info("✅ درخواست کامیابی سے ارسال کر دی گئی۔")
-                    else:
-                        st.warning("براہ کرم وجہ ضرور لکھیں۔")
-
-        with tab_status:
-            st.subheader("📊 میری رخصتوں کا ریکارڈ")
-            my_leaves = pd.read_sql_query(f"SELECT start_date as تاریخ, l_type as نوعیت, days as دن, status as حالت FROM leave_requests WHERE t_name='{st.session_state.username}' ORDER BY start_date DESC", conn)
-
-            if not my_leaves.empty:
-                # خوبصورت رنگین ڈسپلے
-                def style_status(val):
-                    color = '#28a745' if 'منظور' in val else '#dc3545' if 'مسترد' in val else '#ffc107'
-                    return f'background-color: {color}; color: white; font-weight: bold; border-radius: 5px; padding: 2px;'
-
-                st.write(my_leaves.style.applymap(style_status, subset=['حالت']))
+        with tab_leaves:
+            st.subheader("اساتذہ کی رخصتوں کی تفصیل")
+            # تمام رخصتوں کا ڈیٹا لانا (منظور شدہ اور مسترد شدہ سب)
+            leaves_df = pd.read_sql_query("""
+                SELECT t_name as استاد, l_type as نوعیت, start_date as آغاز, 
+                days as دن, status as حالت, reason as وجہ 
+                FROM leave_requests 
+                ORDER BY start_date DESC
+            """, conn)
+            
+            if not leaves_df.empty:
+                st.dataframe(leaves_df, use_container_width=True)
             else:
-                st.write("کوئی ریکارڈ نہیں ملا۔")
+                st.info("رخصت کا کوئی ریکارڈ موجود نہیں ہے۔")
 
     elif m == "🕒 میری حاضری":
-        st.header("🕒 آمد و رخصت")
-        if st.button("✅ آمد"):
-            at = datetime.now().strftime("%H:%M")
-            c.execute("INSERT OR REPLACE INTO t_attendance (t_name, a_date, arrival) VALUES (?,?,?)", (st.session_state.username, date.today(), at))
-            conn.commit(); st.success(f"آمد: {at}")
-        if st.button("🚩 رخصت"):
-            dt = datetime.now().strftime("%H:%M")
-            c.execute("UPDATE t_attendance SET departure=? WHERE t_name=? AND a_date=?", (dt, st.session_state.username, date.today()))
-            conn.commit(); st.success(f"رخصت: {dt}")
+        st.header("🕒 اسمارٹ حاضری پورٹل")
+        
+        # وقت کے حساب سے خوش آمدیدی پیغام
+        current_hour = datetime.now().hour
+        if current_hour < 12: greeting = "صبح بخیر! ☀️"
+        elif current_hour < 17: greeting = "سہ پہر بخیر! 🌤️"
+        else: greeting = "شام بخیر! ✨"
+        
+        st.subheader(f"السلام علیکم، {st.session_state.username}! {greeting}")
 
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("✅ حاضری لگائیں (Arrival)"):
+                now_time = datetime.now().strftime("%I:%M %p")
+                c.execute("INSERT OR REPLACE INTO t_attendance (t_name, a_date, arrival) VALUES (?,?,?)", 
+                          (st.session_state.username, date.today(), now_time))
+                conn.commit()
+                st.balloons() # حاضری پر خوشی کا اظہار
+                st.success(f"آپ کی حاضری لگ چکی ہے: {now_time}")
+
+        with col2:
+            if st.button("🚩 رخصتی ریکارڈ کریں (Departure)"):
+                now_time = datetime.now().strftime("%I:%M %p")
+                c.execute("UPDATE t_attendance SET departure=? WHERE t_name=? AND a_date=?", 
+                          (now_time, st.session_state.username, date.today()))
+                conn.commit()
+                st.warning(f"آپ کی رخصتی ریکارڈ کر لی گئی ہے: {now_time}")
+
+        # آج کی حاضری کا کارڈ
+        st.divider()
+        today_rec = c.execute("SELECT arrival, departure FROM t_attendance WHERE t_name=? AND a_date=?", 
+                              (st.session_state.username, date.today())).fetchone()
+        if today_rec:
+            c1, c2 = st.columns(2)
+            c1.metric("آمد کا وقت", today_rec[0] if today_rec[0] else "--:--")
+            c2.metric("رخصت کا وقت", today_rec[1] if today_rec[1] else "--:--")
+            
     if st.sidebar.button("🚪 لاگ آؤٹ"):
         st.session_state.logged_in = False; st.rerun()
 
@@ -340,3 +346,4 @@ try:
 except:
     # اگر کالم پہلے سے موجود ہے تو یہ حصہ کچھ نہیں کرے گا
     pass
+
