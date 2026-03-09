@@ -228,13 +228,12 @@ else:
     # ================= TEACHER SECTION =================
    # --- استاد کا مینیو: تعلیمی اندراج ---
     if m == "📝 تعلیمی اندراج":
-        st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
+        st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ (جامعہ ملیہ اسلامیہ)")
 
-        tab_entry, tab_ranking, tab_analysis = st.tabs(["📝 جدید اندراج", "🏆 ہفتہ وار ٹاپ 3", "📊 کارکردگی گراف"])
+        tab_entry, tab_ranking = st.tabs(["📝 جدید اندراج", "🏆 ہفتہ وار ٹاپ 3"])
 
         with tab_entry:
             sel_date = st.date_input("تاریخ منتخب کریں", date.today())
-            # ڈیٹا بیس سے طلباء کی لسٹ لانا
             students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()
 
             if not students:
@@ -242,60 +241,81 @@ else:
             else:
                 for s, f in students:
                     with st.expander(f"👤 {s} ولد {f}"):
-                        att = st.radio(f"حاضری", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
+                        att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
+                        
+                        sq_final, m_final = "", ""
+                        total_sq_m, total_m_m = 0, 0
                         
                         if att == "حاضر":
-                            # --- سبق کا حصہ ---
-                            st.markdown("---")
-                            col_s1, col_s2 = st.columns([2, 1])
-                            nagha_s = col_s2.checkbox("سبق ناغہ", key=f"ns_{s}")
-                            if not nagha_s:
-                                su = col_s1.selectbox("سورت", surahs_urdu, key=f"su_{s}")
-                                ayats = col_s1.text_input("آیات (مثلاً: 1 تا 10)", key=f"ay_{s}")
-                            else:
-                                su, ayats = "ناغہ", "-"
-
-                            # --- سبقی کا حصہ ---
-                            st.markdown("---")
-                            st.subheader("🔄 سبقی (پارہ)")
-                            col_sq1, col_sq2, col_sq3 = st.columns([2, 1, 1])
-                            nagha_sq = col_sq3.checkbox("سبقی ناغہ", key=f"nsq_{s}")
+                            # --- 🔄 سبقی (Sabqi) ---
+                            st.subheader("🔄 سبقی")
+                            nagha_sq = st.checkbox("سبقی ناغہ", key=f"nsq_{s}")
+                            
                             if not nagha_sq:
-                                sq_para = col_sq1.selectbox("پارہ نمبر", paras, key=f"sqp_{s}")
-                                sq_vol = col_sq2.selectbox("مقدار", ["مکمل پارہ", "آدھا (1/2)", "پون (3/4)", "پاؤ (1/4)"], key=f"sqv_{s}")
-                                sq_atk = col_sq1.number_input("اٹکن", 0, key=f"sqa_{s}")
-                                sq_err = col_sq2.number_input("غلطی", 0, key=f"sqe_{s}")
+                                if f"sq_count_{s}" not in st.session_state: st.session_state[f"sq_count_{s}"] = 1
+                                
+                                sq_data = []
+                                for i in range(st.session_state[f"sq_count_{s}"]):
+                                    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+                                    p_num = c1.selectbox(f"پارہ {i+1}", paras, key=f"sqp_{s}_{i}")
+                                    p_vol = c2.selectbox(f"مقدار {i+1}", ["مکمل", "آدھا (1/2)", "پون (3/4)", "پاؤ (1/4)"], key=f"sqv_{s}_{i}")
+                                    p_atk = c3.number_input(f"اٹکن {i+1}", 0, key=f"sqa_{s}_{i}")
+                                    p_err = c4.number_input(f"غلطی {i+1}", 0, key=f"sqe_{s}_{i}")
+                                    sq_data.append(f"{p_num}:{p_vol}(غ:{p_err},ا:{p_atk})")
+                                
+                                if st.button(f"➕ سبقی میں مزید پارہ شامل کریں", key=f"add_sq_{s}"):
+                                    st.session_state[f"sq_count_{s}"] += 1
+                                    st.rerun()
+                                sq_final = " | ".join(sq_data)
+                                total_sq_m = sum([int(x.split('غ:')[1].split(',')[0]) for x in sq_data])
                             else:
-                                sq_para, sq_vol, sq_atk, sq_err = "ناغہ", "-", 0, 0
+                                sq_final = "ناغہ"
+                                total_sq_m = 0
 
-                            # --- منزل کا حصہ ---
-                            st.markdown("---")
+                            st.divider()
+
+                            # --- 🏠 منزل (Manzil) ---
                             st.subheader("🏠 منزل")
-                            col_m1, col_m2, col_m3 = st.columns([2, 1, 1])
-                            nagha_m = col_m3.checkbox("منزل ناغہ", key=f"nm_{s}")
+                            nagha_m = st.checkbox("منزل ناغہ", key=f"nm_{s}")
+                            
                             if not nagha_m:
-                                m_para = col_m1.selectbox("منزل پارہ", paras, key=f"mp_{s}")
-                                m_vol = col_m2.selectbox("منزل مقدار", ["مکمل پارہ", "آدھا (1/2)", "پون (3/4)", "پاؤ (1/4)"], key=f"mv_{s}")
-                                m_atk = col_m1.number_input("منزل اٹکن", 0, key=f"ma_{s}")
-                                m_err = col_m2.number_input("منزل غلطی", 0, key=f"me_{s}")
-                            else:
-                                m_para, m_vol, m_atk, m_err = "ناغہ", "-", 0, 0
-                        else:
-                            # غیر حاضر یا رخصت کی صورت میں
-                            su, ayats, sq_para, sq_vol, sq_atk, sq_err, m_para, m_vol, m_atk, m_err = att, "-", att, "-", 0, 0, att, "-", 0, 0
+                                if f"m_count_{s}" not in st.session_state: st.session_state[f"m_count_{s}"] = 1
+                                
+                                m_data = []
+                                for j in range(st.session_state[f"m_count_{s}"]):
+                                    mc1, mc2, mc3, mc4 = st.columns([2, 2, 1, 1])
+                                    mp_num = mc1.selectbox(f"منزل پارہ {j+1}", paras, key=f"mp_{s}_{j}")
+                                    mp_vol = mc2.selectbox(f"منزل مقدار {j+1}", ["مکمل", "آدھا (1/2)", "پون (3/4)", "پاؤ (1/4)"], key=f"mv_{s}_{j}")
+                                    mp_atk = mc3.number_input(f"منزل اٹکن {j+1}", 0, key=f"ma_{s}_{j}")
+                                    mp_err = mc4.number_input(f"منزل غلطی {j+1}", 0, key=f"me_{s}_{j}")
+                                    m_data.append(f"{mp_num}:{mp_vol}(غ:{mp_err},ا:{mp_atk})")
 
-                        # --- ڈیٹا محفوظ کرنے کا بٹن ---
-                        if st.button(f"محفوظ کریں: {s}", key=f"btn_save_{s}"):
+                                if st.button(f"➕ منزل میں مزید پارہ شامل کریں", key=f"add_m_{s}"):
+                                    st.session_state[f"m_count_{s}"] += 1
+                                    st.rerun()
+                                m_final = " | ".join(m_data)
+                                total_m_m = sum([int(x.split('غ:')[1].split(',')[0]) for x in m_data])
+                            else:
+                                m_final = "ناغہ"
+                                total_m_m = 0
+                        else:
+                            sq_final, m_final = att, att
+                            total_sq_m, total_m_m = 0, 0
+
+                        # --- 💾 محفوظ کرنے کا بٹن ---
+                        if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
                             try:
-                                # نوٹ: ڈیٹا بیس میں کالمز کے مطابق ڈیٹا ترتیب دینا
                                 c.execute("""INSERT INTO hifz_records 
-                                          (r_date, s_name, f_name, t_name, surah, a_from, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
-                                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
-                                          (sel_date, s, f, st.session_state.username, f"{su} ({ayats})", sq_vol, sq_para, sq_atk, sq_err, m_para, m_atk, m_err, att))
+                                          (r_date, s_name, f_name, t_name, sq_p, sq_m, m_p, m_m, attendance) 
+                                          VALUES (?,?,?,?,?,?,?,?,?)""", 
+                                          (sel_date, s, f, st.session_state.username, sq_final, total_sq_m, m_final, total_m_m, att))
                                 conn.commit()
-                                st.success(f"ریکارڈ محفوظ ہوگیا! ✅")
+                                st.success(f"ریکارڈ کامیابی سے محفوظ ہو گیا!")
+                                # ری سیٹ
+                                st.session_state[f"sq_count_{s}"] = 1
+                                st.session_state[f"m_count_{s}"] = 1
                             except Exception as e:
-                                st.error(f"محفوظ کرنے میں غلطی: {e}")
+                                st.error(f"محفوظ کرنے میں مسئلہ: {e}")
 
         with tab_ranking:
             st.subheader("🏆 اس ہفتے کے بہترین طلباء")
@@ -391,4 +411,5 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
