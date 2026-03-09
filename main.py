@@ -112,7 +112,9 @@ else:
                 if st.button("💾 تبدیلیاں محفوظ کریں"):
                     for _, r in edited.iterrows():
                         c.execute("UPDATE hifz_records SET surah=?, sq_m=?, m_m=?, principal_note=? WHERE id=?", (r['سبق/سورت'], r['سبقی غلطی'], r['منزل غلطی'], r['مہتمم کی رائے'], r['آئی ڈی']))
-                    conn.commit(); st.success("تبدیلیاں کامیابی سے محفوظ ہو گئیں!"); st.rerun()
+                    conn.commit()
+                    st.success("تبدیلیاں کامیابی سے محفوظ ہو گئیں!")
+                    st.rerun()
             else: st.warning("اس تاریخ کا کوئی ریکارڈ نہیں ملا۔")
         else: st.info("ڈیٹا دستیاب نہیں ہے۔")
 
@@ -156,10 +158,14 @@ else:
                     c_a, c_r = st.columns(2)
                     if c_a.button(f"✅ منظور کریں", key=f"app_{l_id}"):
                         c.execute("UPDATE leave_requests SET status='منظور شدہ ✅', notification_seen=0 WHERE id=?", (l_id,))
-                        conn.commit(); st.success("رخصت منظور کر لی گئی"); st.rerun()
+                        conn.commit()
+                        st.success("رخصت منظور کر لی گئی")
+                        st.rerun()
                     if c_r.button(f"❌ مسترد کریں", key=f"rej_{l_id}"):
                         c.execute("UPDATE leave_requests SET status='مسترد شدہ ❌', notification_seen=0 WHERE id=?", (l_id,))
-                        conn.commit(); st.warning("رخصت مسترد کر دی گئی"); st.rerun()
+                        conn.commit()
+                        st.warning("رخصت مسترد کر دی گئی")
+                        st.rerun()
 
     elif m == "⚙️ انتظامی کنٹرول":
         st.header("⚙️ رجسٹریشن اور انتظامی کنٹرول")
@@ -188,7 +194,9 @@ else:
                     if st.button("اساتذہ کا ڈیٹا اپ ڈیٹ کریں"):
                         for _, r in t_edt.iterrows():
                             c.execute("UPDATE teachers SET name=?, password=?, phone=? WHERE id=?", (r['نام'], r['پاسورڈ'], r['فون'], r['id']))
-                        conn.commit(); st.success("ڈیٹا اپ ڈیٹ ہو گیا!"); st.rerun()
+                        conn.commit()
+                        st.success("ڈیٹا اپ ڈیٹ ہو گیا!")
+                        st.rerun()
                 else: st.info("کوئی استاد موجود نہیں")
             except Exception as e: st.error(f"ایرر: {e}")
 
@@ -203,7 +211,8 @@ else:
                     if st.form_submit_button("طالب علم داخل کریں"):
                         if s_name and s_father:
                             c.execute("INSERT INTO students (name, father_name, teacher_name) VALUES (?,?,?)", (s_name, s_father, s_teacher))
-                            conn.commit(); st.success("داخلہ مکمل ہو گیا!")
+                            conn.commit()
+                            st.success("داخلہ مکمل ہو گیا!")
                         else: st.error("تمام معلومات پُر کریں")
                 else: st.warning("پہلے استاد رجسٹر کریں!")
 
@@ -214,7 +223,9 @@ else:
                 if st.button("طلباء کا ڈیٹا اپ ڈیٹ کریں"):
                     for _, r in s_edt.iterrows():
                         c.execute("UPDATE students SET name=?, father_name=?, teacher_name=? WHERE id=?", (r['نام'], r['ولدیت'], r['استاد'], r['id']))
-                    conn.commit(); st.success("ڈیٹا اپ ڈیٹ ہو گیا!"); st.rerun()
+                    conn.commit()
+                    st.success("ڈیٹا اپ ڈیٹ ہو گیا!")
+                    st.rerun()
 
     elif m == "🕒 اساتذہ کا ریکارڈ":
         st.header("🕒 اساتذہ کا حاضری ریکارڈ")
@@ -226,10 +237,8 @@ else:
         else: st.info("حاضری کا کوئی ریکارڈ موجود نہیں ہے۔")
 
     # ================= TEACHER SECTION =================
-   # --- استاد کا مینیو: تعلیمی اندراج ---
-if m == "📝 تعلیمی اندراج":
+    elif m == "📝 تعلیمی اندراج":
         st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
-        # اب یہاں صرف ایک ہی ٹیب ہے اندراج کے لیے
         tab_entry = st.container() 
 
         with tab_entry:
@@ -243,10 +252,15 @@ if m == "📝 تعلیمی اندراج":
                     with st.expander(f"👤 {s} ولد {f}"):
                         att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
                         
-                        sq_final, m_final = "", ""
+                        sq_final, m_final, surah_sel = "", "", ""
                         total_sq_m, total_m_m = 0, 0
+                        total_sq_a, total_m_a = 0, 0
                         
                         if att == "حاضر":
+                            # --- سبق (Surah) ---
+                            st.subheader("📖 نیا سبق")
+                            surah_sel = st.selectbox("موجودہ سبق (سورت)", surahs_urdu, key=f"surah_{s}")
+
                             # --- سبقی ---
                             st.subheader("🔄 سبقی")
                             nagha_sq = st.checkbox("سبقی ناغہ", key=f"nsq_{s}")
@@ -259,12 +273,15 @@ if m == "📝 تعلیمی اندراج":
                                     p_vol = c2.selectbox(f"مقدار {i+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"sqv_{s}_{i}")
                                     p_atk = c3.number_input(f"اٹکن {i+1}", 0, key=f"sqa_{s}_{i}")
                                     p_err = c4.number_input(f"غلطی {i+1}", 0, key=f"sqe_{s}_{i}")
+                                    
                                     sq_data.append(f"{p_num}:{p_vol}(غ:{p_err},ا:{p_atk})")
+                                    total_sq_m += p_err
+                                    total_sq_a += p_atk
+
                                 if st.button(f"➕ مزید سبقی پارہ", key=f"add_sq_{s}"):
                                     st.session_state[f"sq_count_{s}"] += 1
                                     st.rerun()
                                 sq_final = " | ".join(sq_data)
-                                total_sq_m = sum([int(x.split('غ:')[1].split(',')[0]) for x in sq_data])
                             else: sq_final = "ناغہ"
 
                             st.divider()
@@ -280,22 +297,28 @@ if m == "📝 تعلیمی اندراج":
                                     mp_vol = mc2.selectbox(f"مقدار {j+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"mv_{s}_{j}")
                                     mp_atk = mc3.number_input(f"اٹکن {j+1}", 0, key=f"ma_{s}_{j}")
                                     mp_err = mc4.number_input(f"غلطی {j+1}", 0, key=f"me_{s}_{j}")
+                                    
                                     m_data.append(f"{mp_num}:{mp_vol}(غ:{mp_err},ا:{mp_atk})")
+                                    total_m_m += mp_err
+                                    total_m_a += mp_atk
+
                                 if st.button(f"➕ مزید منزل پارہ", key=f"add_m_{s}"):
                                     st.session_state[f"m_count_{s}"] += 1
                                     st.rerun()
                                 m_final = " | ".join(m_data)
-                                total_m_m = sum([int(x.split('غ:')[1].split(',')[0]) for x in m_data])
                             else: m_final = "ناغہ"
-                        else: sq_final, m_final = att, att
+                        else: 
+                            sq_final, m_final, surah_sel = att, att, att
 
                         if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
-                            c.execute("INSERT INTO hifz_records (r_date, s_name, f_name, t_name, sq_p, sq_m, m_p, m_m, attendance) VALUES (?,?,?,?,?,?,?,?,?)", 
-                                      (sel_date, s, f, st.session_state.username, sq_final, total_sq_m, m_final, total_m_m, att))
+                            c.execute("""INSERT INTO hifz_records 
+                                      (r_date, s_name, f_name, t_name, surah, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
+                                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", 
+                                      (sel_date, s, f, st.session_state.username, surah_sel, sq_final, total_sq_a, total_sq_m, m_final, total_m_a, total_m_m, att))
                             conn.commit()
                             st.success("ریکارڈ محفوظ!")
 
-elif m == "📩 درخواستِ رخصت":
+    elif m == "📩 درخواستِ رخصت":
         st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
 
         # 🔔 نوٹیفیکیشن چیک کرنا
@@ -311,7 +334,8 @@ elif m == "📩 درخواستِ رخصت":
                 st.error(f"⚠️ اطلاع: آپ کی مورخہ {n_date} کی رخصت کی درخواست **مسترد** کر دی گئی ہے۔")
             if st.button(f"سمجھ گیا (ہٹائیں)", key=f"n_{n_id}"):
                 c.execute("UPDATE leave_requests SET notification_seen = 1 WHERE id=?", (n_id,))
-                conn.commit(); st.rerun()
+                conn.commit()
+                st.rerun()
 
         st.divider()
         tab_apply, tab_status = st.tabs(["✍️ نئی درخواست", "📜 میری رخصتوں کی تاریخ"])
@@ -332,7 +356,8 @@ elif m == "📩 درخواستِ رخصت":
                         c.execute("""INSERT INTO leave_requests (t_name, l_type, start_date, days, reason, status, notification_seen) 
                                   VALUES (?,?,?,?,?,?,?)""", 
                                   (st.session_state.username, l_type, s_date, days, reason, "پینڈنگ (زیرِ غور)", 0))
-                        conn.commit(); st.info("✅ درخواست مہتمم کو بھیج دی گئی ہے۔")
+                        conn.commit()
+                        st.info("✅ درخواست مہتمم کو بھیج دی گئی ہے۔")
                     else: st.warning("براہ کرم وجہ ضرور لکھیں۔")
 
         with tab_status:
@@ -342,28 +367,33 @@ elif m == "📩 درخواستِ رخصت":
                 st.dataframe(my_leaves, use_container_width=True, hide_index=True)
             else: st.info("کوئی ریکارڈ نہیں ملا۔")
 
-elif m == "🕒 میری حاضری":
+    elif m == "🕒 میری حاضری":
         st.header("🕒 آمد و رخصت (حاضری)")
         st.write(f"آج کی تاریخ: **{date.today().strftime('%d-%m-%Y')}**")
         
         c1, c2 = st.columns(2)
         if c1.button("✅ آمد (Check-in)"):
             at = datetime.now().strftime("%I:%M %p")
-            c.execute("INSERT OR REPLACE INTO t_attendance (t_name, a_date, arrival) VALUES (?,?,?)", (st.session_state.username, date.today(), at))
-            conn.commit(); st.success(f"آمد کا وقت ریکارڈ ہو گیا: {at}")
+            # چیک کریں کہ آج کی حاضری پہلے تو نہیں لگی ہوئی
+            record_exists = c.execute("SELECT id FROM t_attendance WHERE t_name=? AND a_date=?", (st.session_state.username, date.today())).fetchone()
+            if not record_exists:
+                c.execute("INSERT INTO t_attendance (t_name, a_date, arrival) VALUES (?,?,?)", (st.session_state.username, date.today(), at))
+                conn.commit()
+                st.success(f"آمد کا وقت ریکارڈ ہو گیا: {at}")
+            else:
+                st.info("آج کے دن آپ کی آمد پہلے ہی ریکارڈ ہو چکی ہے!")
         
         if c2.button("🚩 رخصت (Check-out)"):
             dt = datetime.now().strftime("%I:%M %p")
             c.execute("UPDATE t_attendance SET departure=? WHERE t_name=? AND a_date=?", (dt, st.session_state.username, date.today()))
-            conn.commit(); st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
+            conn.commit()
+            st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
 
     # ================= LOGOUT =================
-st.sidebar.divider()
-if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
+    st.sidebar.divider()
+    if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
-
-
 
 
 
