@@ -233,4 +233,129 @@ else:
 
         with tab_entry:
             sel_date = st.date_input("تاریخ منتخب کریں", date.today())
-            students = c.
+            students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()
+
+            if not students:
+                st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔ ایڈمن سے رابطہ کریں۔")
+            else:
+                for s, f in students:
+                    last_rec = c.execute("SELECT surah, sq_m, m_m FROM hifz_records WHERE s_name=? ORDER BY r_date DESC LIMIT 1", (s,)).fetchone()
+                    with st.expander(f"👤 {s} ولد {f}"):
+                        if last_rec:
+                            st.markdown(f"📍 **پچھلا ریکارڈ:** سورت: `{last_rec[0]}` | سبقی غلطی: `{last_rec[1]}` | منزل غلطی: `{last_rec[2]}`")
+                        att = st.radio(f"حاضری", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
+                        
+                        if att == "حاضر":
+                            c1, c2, c3 = st.columns(3)
+                            su = c1.selectbox("سورت", surahs_urdu, key=f"su_{s}")
+                            sm = c2.number_input("سبقی غلطی", 0, key=f"sm_{s}")
+                            mm = c3.number_input("منزل غلطی", 0, key=f"mm_{s}")
+                        else:
+                            su, sm, mm = "-", 0, 0
+
+                        # درست Indentation کے ساتھ محفوظ کرنے کا بٹن
+                        if st.button(f"محفوظ کریں: {s}", key=f"btn_save_{s}"):
+                            try:
+                                c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, surah, sq_m, m_m, attendance) 
+                                          VALUES (?,?,?,?,?,?,?,?)""", 
+                                          (sel_date, s, f, st.session_state.username, su, sm, mm, att))
+                                conn.commit()
+                                st.success(f"{s} کا ریکارڈ کامیابی سے محفوظ ہوگیا! ✅")
+                                st.balloons()
+                            except Exception as e:
+                                st.error(f"ڈیٹا محفوظ کرنے میں مسئلہ آیا: {e}")
+
+        with tab_ranking:
+            st.subheader("🏆 اس ہفتے کے بہترین طلباء")
+            rank_query = f"""SELECT s_name, AVG(sq_m + m_m) as avg_errors, COUNT(CASE WHEN attendance='حاضر' THEN 1 END) as presence 
+                             FROM hifz_records WHERE t_name='{st.session_state.username}' AND r_date >= date('now', '-7 days') AND attendance = 'حاضر' 
+                             GROUP BY s_name HAVING presence > 0 ORDER BY presence DESC, avg_errors ASC LIMIT 3"""
+            ranks = c.execute(rank_query).fetchall()
+
+            if ranks:
+                cols = st.columns(3)
+                medals, colors = ["🥇 ممتاز", "🥈 جید جدا", "🥉 جید"], ["#FFD700", "#C0C0C0", "#CD7F32"]
+                for i, (name, avg_err, pres) in enumerate(ranks):
+                    with cols[i]:
+                        st.markdown(f"""
+                        <div style="background:{colors[i]}33; padding:15px; border-radius:10px; text-align:center; border:2px solid {colors[i]};">
+                            <h2>{medals[i]}</h2><h3>{name}</h3><p>حاضری: <b>{pres} دن</b> | اوسط غلطی: <b>{avg_err:.1f}</b></p>
+                        </div>""", unsafe_allow_html=True)
+            else: st.info("فی الحال ڈیٹا دستیاب نہیں ہے۔")
+
+        with tab_analysis:
+            st.subheader("📊 طلباء کی ہفتہ وار کارکردگی")
+            query = f"SELECT s_name as طالب_علم, (sq_m + m_m) as غلطیاں, r_date as تاریخ FROM hifz_records WHERE t_name='{st.session_state.username}' AND r_date >= date('now', '-7 days') AND attendance='حاضر'"
+            data = pd.read_sql_query(query, conn)
+            if not data.empty:
+                chart_df = data.pivot_table(index='تاریخ', columns='طالب_علم', values='غلطیاں', aggfunc='mean').fillna(0)
+                st.line_chart(chart_df)
+            else: st.info("گراف دکھانے کے لیے ڈیٹا دستیاب نہیں ہے۔")
+
+    elif m == "📩 درخواستِ رخصت":
+        st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
+
+        # 🔔 نوٹیفیکیشن چیک کرنا
+        notifications = c.execute("""SELECT id, status, start_date FROM leave_requests 
+                                     WHERE t_name=? AND status != 'پینڈنگ (زیرِ غور)' 
+                                     AND notification_seen = 0""", (st.session_state.username,)).fetchall()
+
+        for n_id, n_status, n_date in notifications:
+            if "منظور" in n_status:
+                st.balloons()
+                st.success(f"🎊 خوشخبری! آپ کی مورخہ {n_date} کی رخصت **منظور** کر لی گئی ہے۔")
+            else:
+                st.error(f"⚠️ اطلاع: آپ کی مورخہ {n_date} کی رخصت کی درخواست **مسترد** کر دی گئی ہے۔")
+            if st.button(f"سمجھ گیا (ہٹائیں)", key=f"n_{n_id}"):
+                c.execute("UPDATE leave_requests SET notification_seen = 1 WHERE id=?", (n_id,))
+                conn.commit(); st.rerun()
+
+        st.divider()
+        tab_apply, tab_status = st.tabs(["✍️ نئی درخواست", "📜 میری رخصتوں کی تاریخ"])
+
+        with tab_apply:
+            with st.form("teacher_leave_form", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                l_type = col1.selectbox("رخصت کی نوعیت", ["ضروری کام", "بیماری", "ہنگامی رخصت", "دیگر"])
+                s_date = col1.date_input("تاریخ آغاز", date.today())
+                days = col2.number_input("کتنے دن؟", 1, 15)
+                e_date = s_date + timedelta(days=days-1)
+                col2.write(f"واپسی کی تاریخ: **{e_date}**")
+
+                reason = st.text_area("تفصیلی وجہ درج کریں")
+
+                if st.form_submit_button("درخواست ارسال کریں 🚀"):
+                    if reason:
+                        c.execute("""INSERT INTO leave_requests (t_name, l_type, start_date, days, reason, status, notification_seen) 
+                                  VALUES (?,?,?,?,?,?,?)""", 
+                                  (st.session_state.username, l_type, s_date, days, reason, "پینڈنگ (زیرِ غور)", 0))
+                        conn.commit(); st.info("✅ درخواست مہتمم کو بھیج دی گئی ہے۔")
+                    else: st.warning("براہ کرم وجہ ضرور لکھیں۔")
+
+        with tab_status:
+            st.subheader("📊 میری رخصتوں کا ریکارڈ")
+            my_leaves = pd.read_sql_query(f"SELECT start_date as تاریخ, l_type as نوعیت, days as دن, status as حالت FROM leave_requests WHERE t_name='{st.session_state.username}' ORDER BY start_date DESC", conn)
+            if not my_leaves.empty:
+                st.dataframe(my_leaves, use_container_width=True, hide_index=True)
+            else: st.info("کوئی ریکارڈ نہیں ملا۔")
+
+    elif m == "🕒 میری حاضری":
+        st.header("🕒 آمد و رخصت (حاضری)")
+        st.write(f"آج کی تاریخ: **{date.today().strftime('%d-%m-%Y')}**")
+        
+        c1, c2 = st.columns(2)
+        if c1.button("✅ آمد (Check-in)"):
+            at = datetime.now().strftime("%I:%M %p")
+            c.execute("INSERT OR REPLACE INTO t_attendance (t_name, a_date, arrival) VALUES (?,?,?)", (st.session_state.username, date.today(), at))
+            conn.commit(); st.success(f"آمد کا وقت ریکارڈ ہو گیا: {at}")
+        
+        if c2.button("🚩 رخصت (Check-out)"):
+            dt = datetime.now().strftime("%I:%M %p")
+            c.execute("UPDATE t_attendance SET departure=? WHERE t_name=? AND a_date=?", (dt, st.session_state.username, date.today()))
+            conn.commit(); st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
+
+    # ================= LOGOUT =================
+    st.sidebar.divider()
+    if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
+        st.session_state.logged_in = False
+        st.rerun()
