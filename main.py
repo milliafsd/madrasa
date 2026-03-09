@@ -260,7 +260,12 @@ else:
                             # --- سبق (Surah) ---
                             st.subheader("📖 نیا سبق")
                             surah_sel = st.selectbox("موجودہ سبق (سورت)", surahs_urdu, key=f"surah_{s}")
-
+                            
+                            # آیات کا اضافہ (سے - تک)
+                            col_a1, col_a2 = st.columns(2)
+                            ayah_from = col_a1.text_input("آیت نمبر (سے)", key=f"af_{s}")
+                            ayah_to = col_a2.text_input("آیت نمبر (تک)", key=f"at_{s}")
+                        
                             # --- سبقی ---
                             st.subheader("🔄 سبقی")
                             nagha_sq = st.checkbox("سبقی ناغہ", key=f"nsq_{s}")
@@ -310,11 +315,12 @@ else:
                         else: 
                             sq_final, m_final, surah_sel = att, att, att
 
-                        if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
+                                                if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
+                            # a_from اور a_to کا اضافہ کیا گیا ہے
                             c.execute("""INSERT INTO hifz_records 
-                                      (r_date, s_name, f_name, t_name, surah, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
-                                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", 
-                                      (sel_date, s, f, st.session_state.username, surah_sel, sq_final, total_sq_a, total_sq_m, m_final, total_m_a, total_m_m, att))
+                                      (r_date, s_name, f_name, t_name, surah, a_from, a_to, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
+                                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
+                                      (sel_date, s, f, st.session_state.username, surah_sel, ayah_from, ayah_to, sq_final, total_sq_a, total_sq_m, m_final, total_m_a, total_m_m, att))
                             conn.commit()
                             st.success("ریکارڈ محفوظ!")
 
@@ -394,6 +400,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
