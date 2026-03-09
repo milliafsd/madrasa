@@ -203,13 +203,17 @@ else:
                         else:
                             su, af, sp, sa, sm, mp, ma, mm = att, "-", att, 0, 0, att, 0, 0
 
-                        if st.button(f"محفوظ کریں: {s}", key=f"btn_{s}"):
-                            c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, surah, a_from, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance, principal_note) 
-                                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
-                                      (sel_date, s, f, st.session_state.username, su, af, sp, sa, sm, mp, ma, mm, att, "انتظار رائے"))
-                            conn.commit()
-                            st.success(f"ریکارڈ محفوظ ہوگیا")
-                            st.rerun()
+                                if st.button(f"محفوظ کریں: {s}"):
+            try:
+                # ڈیٹا داخل کرنے کی کوشش
+                c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, surah, sq_m, m_m, attendance) 
+                          VALUES (?,?,?,?,?,?,?,?)""", 
+                          (sel_date, s, f, st.session_state.username, su, sm, mm, att))
+                conn.commit()  # یہ لائن ڈیٹا کو فائل میں پکا محفوظ کرتی ہے
+                st.success(f"ریکارڈ کامیابی سے محفوظ ہوگیا! ✅")
+                st.balloons()
+            except Exception as e:
+                st.error(f"ڈیٹا محفوظ کرنے میں مسئلہ آیا: {e}")
 
         with tab_ranking:
             st.subheader("🏆 اس ہفتے کے بہترین طلباء")
@@ -340,3 +344,4 @@ try:
 except:
     # اگر کالم پہلے سے موجود ہے تو یہ حصہ کچھ نہیں کرے گا
     pass
+
