@@ -82,7 +82,7 @@ if not st.session_state.logged_in:
 else:
     # مینو کی ترتیب
     if st.session_state.user_type == "admin":
-        menu = ["📊 یومیہ تعلیمی رپورٹ", "📊 کلاس وائز رپورٹ", "📜 ماہانہ رزلٹ کارڈ", "🕒 اساتذہ کا ریکارڈ", "🏛️ مہتمم پینل (رخصت)", "⚙️ انتظامی کنٹرول"]
+        menu = ["📊 یومیہ تعلیمی رپورٹ", "📜 ماہانہ رزلٹ کارڈ", "🕒 اساتذہ کا ریکارڈ", "🏛️ مہتمم پینل (رخصت)", "⚙️ انتظامی کنٹرول"]
     else:
         menu = ["📝 تعلیمی اندراج", "📩 درخواستِ رخصت", "🕒 میری حاضری"]
         
@@ -225,7 +225,6 @@ else:
             st.dataframe(att_df, use_container_width=True, hide_index=True)
         else: st.info("حاضری کا کوئی ریکارڈ موجود نہیں ہے۔")
 
-m = st.sidebar.radio("مینیو", ["📊 کلاس وائز رپورٹ", "📜 ماہانہ رزلٹ کارڈ"])
 if m == "📊 کلاس وائز رپورٹ":
         st.header("📈 کلاس وار کارکردگی (ایڈمن)")
         
@@ -396,6 +395,7 @@ st.sidebar.divider()
 if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
