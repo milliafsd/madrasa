@@ -225,7 +225,7 @@ else:
             st.dataframe(att_df, use_container_width=True, hide_index=True)
         else: st.info("حاضری کا کوئی ریکارڈ موجود نہیں ہے۔")
 
-        if m == "📊 کلاس وائز رپورٹ":
+if m == "📊 کلاس وائز رپورٹ":
         st.header("📈 کلاس وار کارکردگی (ایڈمن)")
         
         # تمام اساتذہ کی لسٹ لانا
@@ -395,6 +395,7 @@ if m == "📝 تعلیمی اندراج":
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
