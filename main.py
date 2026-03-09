@@ -228,7 +228,7 @@ else:
     # ================= TEACHER SECTION =================
    # --- استاد کا مینیو: تعلیمی اندراج ---
 if m == "📝 تعلیمی اندراج":
-st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
+        st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
         # اب یہاں صرف ایک ہی ٹیب ہے اندراج کے لیے
         tab_entry = st.container() 
 
@@ -362,6 +362,7 @@ st.sidebar.divider()
 if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
