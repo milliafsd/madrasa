@@ -226,6 +226,7 @@ else:
         else: st.info("حاضری کا کوئی ریکارڈ موجود نہیں ہے۔")
 
     # ================= TEACHER SECTION =================
+   # --- استاد کا مینیو: تعلیمی اندراج ---
     if m == "📝 تعلیمی اندراج":
         st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
 
@@ -233,37 +234,68 @@ else:
 
         with tab_entry:
             sel_date = st.date_input("تاریخ منتخب کریں", date.today())
+            # ڈیٹا بیس سے طلباء کی لسٹ لانا
             students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()
 
             if not students:
-                st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔ ایڈمن سے رابطہ کریں۔")
+                st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔")
             else:
                 for s, f in students:
-                    last_rec = c.execute("SELECT surah, sq_m, m_m FROM hifz_records WHERE s_name=? ORDER BY r_date DESC LIMIT 1", (s,)).fetchone()
                     with st.expander(f"👤 {s} ولد {f}"):
-                        if last_rec:
-                            st.markdown(f"📍 **پچھلا ریکارڈ:** سورت: `{last_rec[0]}` | سبقی غلطی: `{last_rec[1]}` | منزل غلطی: `{last_rec[2]}`")
                         att = st.radio(f"حاضری", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
                         
                         if att == "حاضر":
-                            c1, c2, c3 = st.columns(3)
-                            su = c1.selectbox("سورت", surahs_urdu, key=f"su_{s}")
-                            sm = c2.number_input("سبقی غلطی", 0, key=f"sm_{s}")
-                            mm = c3.number_input("منزل غلطی", 0, key=f"mm_{s}")
-                        else:
-                            su, sm, mm = "-", 0, 0
+                            # --- سبق کا حصہ ---
+                            st.markdown("---")
+                            col_s1, col_s2 = st.columns([2, 1])
+                            nagha_s = col_s2.checkbox("سبق ناغہ", key=f"ns_{s}")
+                            if not nagha_s:
+                                su = col_s1.selectbox("سورت", surahs_urdu, key=f"su_{s}")
+                                ayats = col_s1.text_input("آیات (مثلاً: 1 تا 10)", key=f"ay_{s}")
+                            else:
+                                su, ayats = "ناغہ", "-"
 
-                        # درست Indentation کے ساتھ محفوظ کرنے کا بٹن
+                            # --- سبقی کا حصہ ---
+                            st.markdown("---")
+                            st.subheader("🔄 سبقی (پارہ)")
+                            col_sq1, col_sq2, col_sq3 = st.columns([2, 1, 1])
+                            nagha_sq = col_sq3.checkbox("سبقی ناغہ", key=f"nsq_{s}")
+                            if not nagha_sq:
+                                sq_para = col_sq1.selectbox("پارہ نمبر", paras, key=f"sqp_{s}")
+                                sq_vol = col_sq2.selectbox("مقدار", ["مکمل پارہ", "آدھا (1/2)", "پون (3/4)", "پاؤ (1/4)"], key=f"sqv_{s}")
+                                sq_atk = col_sq1.number_input("اٹکن", 0, key=f"sqa_{s}")
+                                sq_err = col_sq2.number_input("غلطی", 0, key=f"sqe_{s}")
+                            else:
+                                sq_para, sq_vol, sq_atk, sq_err = "ناغہ", "-", 0, 0
+
+                            # --- منزل کا حصہ ---
+                            st.markdown("---")
+                            st.subheader("🏠 منزل")
+                            col_m1, col_m2, col_m3 = st.columns([2, 1, 1])
+                            nagha_m = col_m3.checkbox("منزل ناغہ", key=f"nm_{s}")
+                            if not nagha_m:
+                                m_para = col_m1.selectbox("منزل پارہ", paras, key=f"mp_{s}")
+                                m_vol = col_m2.selectbox("منزل مقدار", ["مکمل پارہ", "آدھا (1/2)", "پون (3/4)", "پاؤ (1/4)"], key=f"mv_{s}")
+                                m_atk = col_m1.number_input("منزل اٹکن", 0, key=f"ma_{s}")
+                                m_err = col_m2.number_input("منزل غلطی", 0, key=f"me_{s}")
+                            else:
+                                m_para, m_vol, m_atk, m_err = "ناغہ", "-", 0, 0
+                        else:
+                            # غیر حاضر یا رخصت کی صورت میں
+                            su, ayats, sq_para, sq_vol, sq_atk, sq_err, m_para, m_vol, m_atk, m_err = att, "-", att, "-", 0, 0, att, "-", 0, 0
+
+                        # --- ڈیٹا محفوظ کرنے کا بٹن ---
                         if st.button(f"محفوظ کریں: {s}", key=f"btn_save_{s}"):
                             try:
-                                c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, surah, sq_m, m_m, attendance) 
-                                          VALUES (?,?,?,?,?,?,?,?)""", 
-                                          (sel_date, s, f, st.session_state.username, su, sm, mm, att))
+                                # نوٹ: ڈیٹا بیس میں کالمز کے مطابق ڈیٹا ترتیب دینا
+                                c.execute("""INSERT INTO hifz_records 
+                                          (r_date, s_name, f_name, t_name, surah, a_from, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
+                                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
+                                          (sel_date, s, f, st.session_state.username, f"{su} ({ayats})", sq_vol, sq_para, sq_atk, sq_err, m_para, m_atk, m_err, att))
                                 conn.commit()
-                                st.success(f"{s} کا ریکارڈ کامیابی سے محفوظ ہوگیا! ✅")
-                                st.balloons()
+                                st.success(f"ریکارڈ محفوظ ہوگیا! ✅")
                             except Exception as e:
-                                st.error(f"ڈیٹا محفوظ کرنے میں مسئلہ آیا: {e}")
+                                st.error(f"محفوظ کرنے میں غلطی: {e}")
 
         with tab_ranking:
             st.subheader("🏆 اس ہفتے کے بہترین طلباء")
@@ -359,3 +391,4 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
