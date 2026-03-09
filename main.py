@@ -392,9 +392,10 @@ elif m == "🕒 میری حاضری":
 
     # ================= LOGOUT =================
 st.sidebar.divider()
-    if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
+if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
