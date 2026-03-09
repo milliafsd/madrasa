@@ -391,10 +391,11 @@ elif m == "🕒 میری حاضری":
             conn.commit(); st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
 
     # ================= LOGOUT =================
-    st.sidebar.divider()
+st.sidebar.divider()
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
