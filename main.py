@@ -327,7 +327,7 @@ if m == "📝 تعلیمی اندراج":
                                       (sel_date, s, f, st.session_state.username, sq_final, total_sq_m, m_final, total_m_m, att))
                             conn.commit()
                             st.success("ریکارڈ محفوظ!")
-                            
+
             elif m == "📩 درخواستِ رخصت":
         st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
 
@@ -395,6 +395,7 @@ if m == "📝 تعلیمی اندراج":
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
