@@ -375,7 +375,7 @@ elif m == "📩 درخواستِ رخصت":
                 st.dataframe(my_leaves, use_container_width=True, hide_index=True)
             else: st.info("کوئی ریکارڈ نہیں ملا۔")
 
-            elif m == "🕒 میری حاضری":
+elif m == "🕒 میری حاضری":
         st.header("🕒 آمد و رخصت (حاضری)")
         st.write(f"آج کی تاریخ: **{date.today().strftime('%d-%m-%Y')}**")
         
@@ -395,6 +395,7 @@ elif m == "📩 درخواستِ رخصت":
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
