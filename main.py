@@ -225,12 +225,45 @@ else:
             st.dataframe(att_df, use_container_width=True, hide_index=True)
         else: st.info("حاضری کا کوئی ریکارڈ موجود نہیں ہے۔")
 
+if m == "📊 کلاس وائز رپورٹ":
+        st.header("📈 کلاس وار کارکردگی (ایڈمن)")
+        
+        # تمام اساتذہ کی لسٹ لانا
+        teachers = [t[0] for t in c.execute("SELECT DISTINCT teacher_name FROM students").fetchall()]
+        selected_t = st.selectbox("استاد (کلاس) منتخب کریں", teachers)
+        
+        col1, col2 = st.columns(2)
+        
+        # --- ہفتہ وار ٹاپ 3 (Top 3 Students) ---
+        with col1:
+            st.subheader("🏆 بہترین کارکردگی (ٹاپ 3)")
+            # کم ترین غلطیوں کی بنیاد پر رینکنگ
+            rank_data = c.execute("""SELECT s_name, SUM(sq_m + m_m) as total_errors 
+                                     FROM hifz_records 
+                                     WHERE t_name=? AND attendance='حاضر' 
+                                     GROUP BY s_name ORDER BY total_errors ASC LIMIT 3""", (selected_t,)).fetchall()
+            if rank_data:
+                for i, (name, err) in enumerate(rank_data):
+                    st.success(f"{i+1}. {name} (کل غلطیاں: {err})")
+            else: st.info("ڈیٹا دستیاب نہیں۔")
+
+        # --- کارکردگی گراف (Performance Graph) ---
+        with col2:
+            st.subheader("📊 کلاس گراف")
+            graph_query = f"SELECT r_date, SUM(sq_m + m_m) FROM hifz_records WHERE t_name='{selected_t}' GROUP BY r_date"
+            import pandas as pd
+            df = pd.read_sql_query(graph_query, conn)
+            if not df.empty:
+                df.columns = ['تاریخ', 'مجموعی غلطیاں']
+                st.line_chart(df.set_index('تاریخ'))
+            else: st.info("گراف کے لیے ڈیٹا ناکافی ہے۔")
+                
     # ================= TEACHER SECTION =================
    # --- استاد کا مینیو: تعلیمی اندراج ---
-    if m == "📝 تعلیمی اندراج":
-        st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ (جامعہ ملیہ اسلامیہ)")
-
-        tab_entry, tab_ranking = st.tabs(["📝 جدید اندراج", "🏆 ہفتہ وار ٹاپ 3"])
+if m == "📝 تعلیمی اندراج":
+        st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
+        # اب یہاں صرف ایک ہی ٹیب ہے اندراج کے لیے
+        tab_entry = st.container() 
 
         with tab_entry:
             sel_date = st.date_input("تاریخ منتخب کریں", date.today())
@@ -247,101 +280,53 @@ else:
                         total_sq_m, total_m_m = 0, 0
                         
                         if att == "حاضر":
-                            # --- 🔄 سبقی (Sabqi) ---
+                            # --- سبقی ---
                             st.subheader("🔄 سبقی")
                             nagha_sq = st.checkbox("سبقی ناغہ", key=f"nsq_{s}")
-                            
                             if not nagha_sq:
                                 if f"sq_count_{s}" not in st.session_state: st.session_state[f"sq_count_{s}"] = 1
-                                
                                 sq_data = []
                                 for i in range(st.session_state[f"sq_count_{s}"]):
                                     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
                                     p_num = c1.selectbox(f"پارہ {i+1}", paras, key=f"sqp_{s}_{i}")
-                                    p_vol = c2.selectbox(f"مقدار {i+1}", ["مکمل", "آدھا (1/2)", "پون (3/4)", "پاؤ (1/4)"], key=f"sqv_{s}_{i}")
+                                    p_vol = c2.selectbox(f"مقدار {i+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"sqv_{s}_{i}")
                                     p_atk = c3.number_input(f"اٹکن {i+1}", 0, key=f"sqa_{s}_{i}")
                                     p_err = c4.number_input(f"غلطی {i+1}", 0, key=f"sqe_{s}_{i}")
                                     sq_data.append(f"{p_num}:{p_vol}(غ:{p_err},ا:{p_atk})")
-                                
-                                if st.button(f"➕ سبقی میں مزید پارہ شامل کریں", key=f"add_sq_{s}"):
+                                if st.button(f"➕ مزید سبقی پارہ", key=f"add_sq_{s}"):
                                     st.session_state[f"sq_count_{s}"] += 1
                                     st.rerun()
                                 sq_final = " | ".join(sq_data)
                                 total_sq_m = sum([int(x.split('غ:')[1].split(',')[0]) for x in sq_data])
-                            else:
-                                sq_final = "ناغہ"
-                                total_sq_m = 0
+                            else: sq_final = "ناغہ"
 
                             st.divider()
-
-                            # --- 🏠 منزل (Manzil) ---
+                            # --- منزل ---
                             st.subheader("🏠 منزل")
                             nagha_m = st.checkbox("منزل ناغہ", key=f"nm_{s}")
-                            
                             if not nagha_m:
                                 if f"m_count_{s}" not in st.session_state: st.session_state[f"m_count_{s}"] = 1
-                                
                                 m_data = []
                                 for j in range(st.session_state[f"m_count_{s}"]):
                                     mc1, mc2, mc3, mc4 = st.columns([2, 2, 1, 1])
-                                    mp_num = mc1.selectbox(f"منزل پارہ {j+1}", paras, key=f"mp_{s}_{j}")
-                                    mp_vol = mc2.selectbox(f"منزل مقدار {j+1}", ["مکمل", "آدھا (1/2)", "پون (3/4)", "پاؤ (1/4)"], key=f"mv_{s}_{j}")
-                                    mp_atk = mc3.number_input(f"منزل اٹکن {j+1}", 0, key=f"ma_{s}_{j}")
-                                    mp_err = mc4.number_input(f"منزل غلطی {j+1}", 0, key=f"me_{s}_{j}")
+                                    mp_num = mc1.selectbox(f"منزل پ {j+1}", paras, key=f"mp_{s}_{j}")
+                                    mp_vol = mc2.selectbox(f"مقدار {j+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"mv_{s}_{j}")
+                                    mp_atk = mc3.number_input(f"اٹکن {j+1}", 0, key=f"ma_{s}_{j}")
+                                    mp_err = mc4.number_input(f"غلطی {j+1}", 0, key=f"me_{s}_{j}")
                                     m_data.append(f"{mp_num}:{mp_vol}(غ:{mp_err},ا:{mp_atk})")
-
-                                if st.button(f"➕ منزل میں مزید پارہ شامل کریں", key=f"add_m_{s}"):
+                                if st.button(f"➕ مزید منزل پارہ", key=f"add_m_{s}"):
                                     st.session_state[f"m_count_{s}"] += 1
                                     st.rerun()
                                 m_final = " | ".join(m_data)
                                 total_m_m = sum([int(x.split('غ:')[1].split(',')[0]) for x in m_data])
-                            else:
-                                m_final = "ناغہ"
-                                total_m_m = 0
-                        else:
-                            sq_final, m_final = att, att
-                            total_sq_m, total_m_m = 0, 0
+                            else: m_final = "ناغہ"
+                        else: sq_final, m_final = att, att
 
-                        # --- 💾 محفوظ کرنے کا بٹن ---
                         if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
-                            try:
-                                c.execute("""INSERT INTO hifz_records 
-                                          (r_date, s_name, f_name, t_name, sq_p, sq_m, m_p, m_m, attendance) 
-                                          VALUES (?,?,?,?,?,?,?,?,?)""", 
-                                          (sel_date, s, f, st.session_state.username, sq_final, total_sq_m, m_final, total_m_m, att))
-                                conn.commit()
-                                st.success(f"ریکارڈ کامیابی سے محفوظ ہو گیا!")
-                                # ری سیٹ
-                                st.session_state[f"sq_count_{s}"] = 1
-                                st.session_state[f"m_count_{s}"] = 1
-                            except Exception as e:
-                                st.error(f"محفوظ کرنے میں مسئلہ: {e}")
-        with tab_ranking:
-            st.subheader("🏆 اس ہفتے کے بہترین طلباء")
-            rank_query = f"""SELECT s_name, AVG(sq_m + m_m) as avg_errors, COUNT(CASE WHEN attendance='حاضر' THEN 1 END) as presence 
-                             FROM hifz_records WHERE t_name='{st.session_state.username}' AND r_date >= date('now', '-7 days') AND attendance = 'حاضر' 
-                             GROUP BY s_name HAVING presence > 0 ORDER BY presence DESC, avg_errors ASC LIMIT 3"""
-            ranks = c.execute(rank_query).fetchall()
-
-            if ranks:
-                cols = st.columns(3)
-                medals, colors = ["🥇 ممتاز", "🥈 جید جدا", "🥉 جید"], ["#FFD700", "#C0C0C0", "#CD7F32"]
-                for i, (name, avg_err, pres) in enumerate(ranks):
-                    with cols[i]:
-                        st.markdown(f"""
-                        <div style="background:{colors[i]}33; padding:15px; border-radius:10px; text-align:center; border:2px solid {colors[i]};">
-                            <h2>{medals[i]}</h2><h3>{name}</h3><p>حاضری: <b>{pres} دن</b> | اوسط غلطی: <b>{avg_err:.1f}</b></p>
-                        </div>""", unsafe_allow_html=True)
-            else: st.info("فی الحال ڈیٹا دستیاب نہیں ہے۔")
-
-        with tab_analysis:
-            st.subheader("📊 طلباء کی ہفتہ وار کارکردگی")
-            query = f"SELECT s_name as طالب_علم, (sq_m + m_m) as غلطیاں, r_date as تاریخ FROM hifz_records WHERE t_name='{st.session_state.username}' AND r_date >= date('now', '-7 days') AND attendance='حاضر'"
-            data = pd.read_sql_query(query, conn)
-            if not data.empty:
-                chart_df = data.pivot_table(index='تاریخ', columns='طالب_علم', values='غلطیاں', aggfunc='mean').fillna(0)
-                st.line_chart(chart_df)
-            else: st.info("گراف دکھانے کے لیے ڈیٹا دستیاب نہیں ہے۔")
+                            c.execute("INSERT INTO hifz_records (r_date, s_name, f_name, t_name, sq_p, sq_m, m_p, m_m, attendance) VALUES (?,?,?,?,?,?,?,?,?)", 
+                                      (sel_date, s, f, st.session_state.username, sq_final, total_sq_m, m_final, total_m_m, att))
+                            conn.commit()
+                            st.success("ریکارڈ محفوظ!")
 
     elif m == "📩 درخواستِ رخصت":
         st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
@@ -410,6 +395,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
