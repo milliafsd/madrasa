@@ -316,7 +316,6 @@ else:
                                 st.session_state[f"m_count_{s}"] = 1
                             except Exception as e:
                                 st.error(f"محفوظ کرنے میں مسئلہ: {e}")
-
         with tab_ranking:
             st.subheader("🏆 اس ہفتے کے بہترین طلباء")
             rank_query = f"""SELECT s_name, AVG(sq_m + m_m) as avg_errors, COUNT(CASE WHEN attendance='حاضر' THEN 1 END) as presence 
@@ -411,5 +410,6 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
