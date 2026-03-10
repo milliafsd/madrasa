@@ -549,10 +549,8 @@ else:
             c.execute("UPDATE t_attendance SET departure=? WHERE t_name=? AND a_date=?", (dt, st.session_state.username, date.today()))
             conn.commit()
             st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
-        if m == "🎓 امتحانی تعلیمی رپورٹ":
-def render_exam_report():
-    st.subheader("🎓 امتحانی تعلیمی رپورٹ")
-    
+    elif m == "🎓 امتحانی تعلیمی رپورٹ":
+    render_exam_report()  #    
     # درست کالم کے ناموں کے ساتھ ڈیٹا حاصل کرنا
     try:
         students = c.execute("SELECT s_name, f_name FROM students").fetchall()
@@ -649,6 +647,7 @@ def render_exam_report():
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
