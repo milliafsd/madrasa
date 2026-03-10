@@ -412,7 +412,7 @@ else:
                             conn.commit()
                             st.success(f"{s} کی حاضری لگ گئی!")
 
-                    else: # غیر حاضر یا رخصت کی صورت میں
+                     else: # غیر حاضر یا رخصت کی صورت میں
                         if st.button(f"محفوظ کریں: {s}", key=f"save_absent_{s}"):
                             c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, attendance, surah, sq_p, m_p) 
                                       VALUES (?,?,?,?,?,?,?,?)""", (sel_date, s, f, st.session_state.username, att, att, att, att))
@@ -495,6 +495,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
