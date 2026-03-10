@@ -63,7 +63,8 @@ def render_exam_report():
     st.subheader("🎓 امتحانی تعلیمی رپورٹ")
     
     # طلباء کی لسٹ حاصل کرنا
-    students = c.execute("SELECT name, father FROM students").fetchall()
+    students = c.execute("SELECT s_name, f_name FROM students").fetchall()
+except:
     if not students:
         st.warning("پہلے طالب علم کا اندراج کریں!")
         return
@@ -638,6 +639,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
