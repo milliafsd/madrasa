@@ -36,7 +36,7 @@ def init_db():
 conn.commit()
 
     # کالمز کا اضافہ (نئے فیچرز کے لیے)
-    cols = [
+cols = [
             ("students", "phone", "TEXT"), ("students", "address", "TEXT"), ("students", "id_card", "TEXT"), 
             ("students", "photo", "TEXT"), ("teachers", "phone", "TEXT"), ("teachers", "address", "TEXT"), 
             ("teachers", "id_card", "TEXT"), ("teachers", "photo", "TEXT"), 
@@ -594,6 +594,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
