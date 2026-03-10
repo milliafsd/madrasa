@@ -342,20 +342,19 @@ else:
         if not students:
             st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔")
         else:
-                        # یہاں سے لوپ شروع ہو رہا ہے
+                                   # طلباء کی فہرست پر لوپ
             for s, f in students:
                 with st.expander(f"👤 {s} ولد {f}"):
                     att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
                     
                     if att == "حاضر":
-                        # سبق اور آیات
+                        # سبق، سبقی اور منزل کا ڈیٹا جمع کرنا
                         st.subheader("📖 نیا سبق")
                         surah_sel = st.selectbox("موجودہ سبق (سورت)", surahs_urdu, key=f"surah_{s}")
                         c_a1, c_a2 = st.columns(2)
                         ayah_from = c_a1.text_input("آیت (سے)", key=f"af_{s}")
                         ayah_to = c_a2.text_input("آیت (تک)", key=f"at_{s}")
 
-                        # سبقی
                         st.subheader("🔄 سبقی")
                         if f"sq_count_{s}" not in st.session_state: st.session_state[f"sq_count_{s}"] = 1
                         for i in range(st.session_state[f"sq_count_{s}"]):
@@ -369,7 +368,6 @@ else:
                             st.session_state[f"sq_count_{s}"] += 1
                             st.rerun()
 
-                        # منزل
                         st.subheader("🏠 منزل")
                         if f"m_count_{s}" not in st.session_state: st.session_state[f"m_count_{s}"] = 1
                         for j in range(st.session_state[f"m_count_{s}"]):
@@ -383,36 +381,47 @@ else:
                             st.session_state[f"m_count_{s}"] += 1
                             st.rerun()
 
-                        # محفوظ کریں (حاضر طالب علم کے لیے)
+                        # --- ڈیٹا محفوظ کرنے کا عمل ---
                         if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
-                            # حساب کتاب
-                            sq_list, f_sq_m, f_sq_a = [], 0, 0
-                            for i in range(st.session_state[f"sq_count_{s}"]):
-                                p, v, a, e = st.session_state[f"sqp_{s}_{i}"], st.session_state[f"sqv_{s}_{i}"], st.session_state[f"sqa_{s}_{i}"], st.session_state[f"sqe_{s}_{i}"]
-                                sq_list.append(f"{p}:{v}(غ:{e},ا:{a})")
-                                f_sq_m += e; f_sq_a += a
+                            # 1. پہلے چیک کریں کہ کیا آج کا ریکارڈ پہلے سے موجود ہے؟
+                            check = c.execute("SELECT 1 FROM hifz_records WHERE r_date = ? AND s_name = ? AND f_name = ?", (sel_date, s, f)).fetchone()
                             
-                            m_list, f_m_m, f_m_a = [], 0, 0
-                            for j in range(st.session_state[f"m_count_{s}"]):
-                                mp, mv, ma, me = st.session_state[f"mp_{s}_{j}"], st.session_state[f"mv_{s}_{j}"], st.session_state[f"ma_{s}_{j}"], st.session_state[f"me_{s}_{j}"]
-                                m_list.append(f"{mp}:{mv}(غ:{me},ا:{ma})")
-                                f_m_m += me; f_m_a += ma
+                            if check:
+                                st.error(f"🛑 ریکارڈ پہلے سے موجود ہے! {s} کا {sel_date} کا اندراج ہو چکا ہے۔")
+                            else:
+                                # ڈیٹا کو ترتیب دینا
+                                sq_list, f_sq_m, f_sq_a = [], 0, 0
+                                for i in range(st.session_state[f"sq_count_{s}"]):
+                                    p, v, a, e = st.session_state[f"sqp_{s}_{i}"], st.session_state[f"sqv_{s}_{i}"], st.session_state[f"sqa_{s}_{i}"], st.session_state[f"sqe_{s}_{i}"]
+                                    sq_list.append(f"{p}:{v}(غ:{e},ا:{a})"); f_sq_m += e; f_sq_a += a
+                                
+                                m_list, f_m_m, f_m_a = [], 0, 0
+                                for j in range(st.session_state[f"m_count_{s}"]):
+                                    mp, mv, ma, me = st.session_state[f"mp_{s}_{j}"], st.session_state[f"mv_{s}_{j}"], st.session_state[f"ma_{s}_{j}"], st.session_state[f"me_{s}_{j}"]
+                                    m_list.append(f"{mp}:{mv}(غ:{me},ا:{ma})"); f_m_m += me; f_m_a += ma
 
-                            c.execute("""INSERT INTO hifz_records 
-                                      (r_date, s_name, f_name, t_name, surah, a_from, a_to, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
-                                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
-                                      (sel_date, s, f, st.session_state.username, surah_sel, ayah_from, ayah_to, 
-                                       " | ".join(sq_list), f_sq_a, f_sq_m, " | ".join(m_list), f_m_a, f_m_m, att))
-                            conn.commit()
-                            st.success(f"الحمدللہ! {s} کا ریکارڈ محفوظ ہو گیا۔")
-                    
-                    # غیر حاضر یا رخصت کی صورت میں (یہاں سیدھ بالکل درست ہے)
+                                # ڈیٹا بیس میں ڈالنا
+                                c.execute("""INSERT INTO hifz_records 
+                                          (r_date, s_name, f_name, t_name, surah, a_from, a_to, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
+                                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
+                                          (sel_date, s, f, st.session_state.username, surah_sel, ayah_from, ayah_to, 
+                                           " | ".join(sq_list), f_sq_a, f_sq_m, " | ".join(m_list), f_m_a, f_m_m, att))
+                                conn.commit()
+                                st.success(f"✅ الحمدللہ! {s} کا ریکارڈ محفوظ ہو گیا۔")
+
+                    # غیر حاضر یا رخصت کی صورت میں
                     else:
                         if st.button(f"محفوظ کریں: {s}", key=f"save_absent_{s}"):
-                            c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, attendance, surah, sq_p, m_p) 
-                                      VALUES (?,?,?,?,?,?,?,?)""", (sel_date, s, f, st.session_state.username, att, att, att, att))
-                            conn.commit()
-                            st.success(f"{s} کی حاضری ({att}) لگ گئی ہے۔")
+                            # یہاں بھی چیکنگ کریں
+                            check = c.execute("SELECT 1 FROM hifz_records WHERE r_date = ? AND s_name = ? AND f_name = ?", (sel_date, s, f)).fetchone()
+                            if check:
+                                st.error(f"🛑 ریکارڈ پہلے سے موجود ہے!")
+                            else:
+                                c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, attendance, surah, sq_p, m_p) 
+                                          VALUES (?,?,?,?,?,?,?,?)""", (sel_date, s, f, st.session_state.username, att, att, att, att))
+                                conn.commit()
+                                st.success(f"✅ {s} کی حاضری ({att}) لگ گئی ہے۔")
+    
 
     elif m == "📩 درخواستِ رخصت":
         st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
@@ -490,6 +499,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
