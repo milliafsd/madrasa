@@ -243,7 +243,8 @@ else:
 
         with tab_entry:
             sel_date = st.date_input("تاریخ منتخب کریں", date.today())
-            students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()                                st.session_state[f"m_count_{s}"] += 1
+            students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?",
+            (st.session_state.username,)).fetchall()                                st.session_state[f"m_count_{s}"] += 1
                          for s, f in students:
                     with st.expander(f"👤 {s} ولد {f}"):
                         att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
@@ -397,6 +398,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
