@@ -276,9 +276,9 @@ else:
         if not att_df.empty: st.dataframe(att_df, use_container_width=True)
 
     # ================= TEACHER SECTION (اصل مکمل کوڈ) =================
-    elif m == "📝 تعلیمی اندراج":
-        st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
-        sel_date = st.date_input("تاریخ منتخب کریں", date.today())
+        elif m == "📝 تعلیمی اندراج":
+            st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
+            sel_date = st.date_input("تاریخ منتخب کریں", date.today())
         
         # ڈیٹا بیس سے طلباء کی لسٹ لینا
         students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()
@@ -433,6 +433,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
