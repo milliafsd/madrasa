@@ -294,7 +294,7 @@ else:
         if not att_df.empty: st.dataframe(att_df, use_container_width=True)
 
     # ================= TEACHER SECTION (اصل مکمل کوڈ) =================
-  elif m == "📝 تعلیمی اندراج":
+    elif m == "📝 تعلیمی اندراج":
         st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
         sel_date = st.date_input("تاریخ منتخب کریں", date.today())
         
@@ -451,4 +451,5 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
