@@ -550,59 +550,69 @@ else:
             conn.commit()
             st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
 
-    elif m == "🎓 امتحانی تعلیمی رپورٹ":
-        render_exam_report()  #
-        st.header("🎓 امتحانی تعلیمی رپورٹ (حفظِ قرآن)")
+    def render_exam_report():
+    st.subheader("🎓 امتحانی تعلیمی رپورٹ")
     
-    tab1, tab2 = st.tabs(["📝 نیا امتحان", "📜 رزلٹ کارڈز"])
+    # طلباء کی لسٹ حاصل کرنا (صحیح کالم کے ناموں کے ساتھ: s_name, f_name)
+    try:
+        students = c.execute("SELECT s_name, f_name FROM students").fetchall()
+    except sqlite3.OperationalError:
+        st.error("❌ ڈیٹا بیس میں طلباء کا ریکارڈ نہیں مل رہا۔")
+        return
+
+    if not students:
+        st.warning("⚠️ پہلے طلباء کا اندراج کریں!")
+        return
+
+    # طلباء کی فہرست تیار کرنا
+    student_list = [f"{s[0]} ولد {s[1]}" for s in students]
+    selected_s = st.selectbox("طالب علم منتخب کریں", student_list)
+    s_name, f_name = selected_s.split(" ولد ")
     
-    with tab1:
-        st.subheader("طالب علم کا انتخاب کریں")
-        # طلباء کی فہرست سے نام نکالیں
-        student_list = [f"{row[0]} ولد {row[1]}" for row in students]
-        selected_s = st.selectbox("طالب علم", student_list)
-        s_name, f_name = selected_s.split(" ولد ")
-        
-        col1, col2, col3 = st.columns(3)
-        para = col1.number_input("پارہ نمبر", 1, 30)
-        s_date = col2.date_input("آغازِ پارہ")
-        e_date = col3.date_input("اختتامِ پارہ")
-        
-        st.divider()
-        st.markdown("### 🖋️ ممتحن (مہتمم صاحب) کے لیے")
-        
-        # 5 سوالات کے نمبر
-        c1, c2, c3, c4, c5 = st.columns(5)
-        q1 = c1.number_input("سوال 1", 0, 20, key="q1")
-        q2 = c2.number_input("سوال 2", 0, 20, key="q2")
-        q3 = c3.number_input("سوال 3", 0, 20, key="q3")
-        q4 = c4.number_input("سوال 4", 0, 20, key="q4")
-        q5 = c5.number_input("سوال 5", 0, 20, key="q5")
-        
-        total = q1 + q2 + q3 + q4 + q5
-        
-        # گریڈ کی لاجک
-        grade = ""
-        status = "کامیاب"
-        if total >= 90: grade = "ممتاز"
-        elif total >= 80: grade = "جید جداً"
-        elif total >= 70: grade = "جید"
-        elif total >= 60: grade = "مقبول"
-        else: 
-            grade = "دوبارہ کوشش کریں"
-            status = "ناکام"
+    col1, col2, col3 = st.columns(3)
+    para = col1.number_input("پارہ نمبر", 1, 30, key="exam_para")
+    s_date = col2.date_input("آغازِ پارہ", key="exam_start")
+    e_date = col3.date_input("اختتامِ پارہ", key="exam_end")
+    
+    st.markdown("---")
+    st.markdown("### 🖋️ ممتحن (مہتمم صاحب) کے نمبرات")
+    
+    # 5 سوالات کے لیے کالمز
+    q_cols = st.columns(5)
+    q1 = q_cols[0].number_input("سوال 1", 0, 20, key="q1")
+    q2 = q_cols[1].number_input("سوال 2", 0, 20, key="q2")
+    q3 = q_cols[2].number_input("سوال 3", 0, 20, key="q3")
+    q4 = q_cols[3].number_input("سوال 4", 0, 20, key="q4")
+    q5 = q_cols[4].number_input("سوال 5", 0, 20, key="q5")
+    
+    total = q1 + q2 + q3 + q4 + q5
+    
+    # گریڈ اور اسٹیٹس کا فیصلہ
+    if total >= 90: grade, status = "ممتاز", "کامیاب"
+    elif total >= 80: grade, status = "جید جداً", "کامیاب"
+    elif total >= 70: grade, status = "جید", "کامیاب"
+    elif total >= 60: grade, status = "مقبول", "کامیاب"
+    else: grade, status = "دوبارہ کوشش کریں", "ناکام"
 
-        st.metric("کل نمبر", f"{total} / 100", f"گریڈ: {grade}")
+    # نتیجہ دکھانا
+    st.divider()
+    res_col1, res_col2 = st.columns(2)
+    res_col1.metric("کل حاصل کردہ نمبر", f"{total} / 100")
+    res_col2.metric("گریڈ", grade)
 
-        if st.button("امتحانی رزلٹ محفوظ کریں"):
+    if st.button("امتحانی رزلٹ محفوظ کریں"):
+        # ڈبلنگ سے بچاؤ (ایک طالب علم کا ایک پارے کا ایک ہی رزلٹ ہو)
+        check = c.execute("SELECT 1 FROM exams WHERE s_name=? AND f_name=? AND para_no=?", (s_name, f_name, para)).fetchone()
+        
+        if check:
+            st.error(f"🛑 ریکارڈ پہلے سے موجود ہے! {s_name} کا پارہ نمبر {para} کا امتحان ہو چکا ہے۔")
+        else:
             c.execute("""INSERT INTO exams (s_name, f_name, para_no, start_date, end_date, q1, q2, q3, q4, q5, total, grade, status) 
                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
                       (s_name, f_name, para, str(s_date), str(e_date), q1, q2, q3, q4, q5, total, grade, status))
             conn.commit()
-            if status == "کامیاب":
-                st.success(f"مبارک ہو! {s_name} نے پارہ نمبر {para} پاس کر لیا ہے۔")
-            else:
-                st.warning("نتیجہ محفوظ کر لیا گیا ہے۔ طالب علم کو دوبارہ تیاری کی ہدایت کریں۔")
+            st.success(f"✅ الحمدللہ! {s_name} کا پارہ نمبر {para} کا رزلٹ محفوظ ہو گیا۔")
+            st.balloons()
 
     with tab2:
         # یہاں رزلٹ کارڈ پرنٹ کرنے کا آپشن ہوگا
@@ -638,6 +648,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
