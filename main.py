@@ -550,29 +550,30 @@ else:
             conn.commit()
             st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
 
-    def render_exam_report():
+     def render_exam_report():
     st.subheader("🎓 امتحانی تعلیمی رپورٹ")
     
-    # طلباء کی لسٹ حاصل کرنا (صحیح کالم کے ناموں کے ساتھ: s_name, f_name)
+    # درست کالم کے ناموں کے ساتھ ڈیٹا حاصل کرنا
     try:
         students = c.execute("SELECT s_name, f_name FROM students").fetchall()
     except sqlite3.OperationalError:
-        st.error("❌ ڈیٹا بیس میں طلباء کا ریکارڈ نہیں مل رہا۔")
+        st.error("❌ ڈیٹا بیس میں کالم 's_name' یا 'f_name' نہیں مل رہا۔")
         return
 
     if not students:
-        st.warning("⚠️ پہلے طلباء کا اندراج کریں!")
+        st.warning("⚠️ ابھی تک کوئی طالب علم درج نہیں ہے۔")
         return
 
-    # طلباء کی فہرست تیار کرنا
-    student_list = [f"{s[0]} ولد {s[1]}" for s in students]
-    selected_s = st.selectbox("طالب علم منتخب کریں", student_list)
+    # طلباء کو منتخب کرنے کی لسٹ
+    student_options = [f"{s[0]} ولد {s[1]}" for s in students]
+    selected_s = st.selectbox("طالب علم منتخب کریں", student_options)
     s_name, f_name = selected_s.split(" ولد ")
     
+    # باقی امتحانی فارم یہاں سے شروع ہوگا...
     col1, col2, col3 = st.columns(3)
-    para = col1.number_input("پارہ نمبر", 1, 30, key="exam_para")
-    s_date = col2.date_input("آغازِ پارہ", key="exam_start")
-    e_date = col3.date_input("اختتامِ پارہ", key="exam_end")
+    p_no = col1.number_input("پارہ نمبر", 1, 30)
+    s_date = col2.date_input("آغازِ پارہ")
+    e_date = col3.date_input("اختتامِ پارہ")
     
     st.markdown("---")
     st.markdown("### 🖋️ ممتحن (مہتمم صاحب) کے نمبرات")
@@ -648,6 +649,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
