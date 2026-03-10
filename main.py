@@ -188,6 +188,7 @@ else:
     m = st.sidebar.radio("📌 مینو منتخب کریں", menu)
 
     # ================= ADMIN SECTION =================
+    
     elif choice == "📜 یومیہ تعلیمی رپورٹ":
         st.header("📊 تعلیمی رپورٹس")
         t1, t2 = st.tabs(["آج کا ریکارڈ", "انفرادی تعلیمی خلاصہ"])
@@ -433,6 +434,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
