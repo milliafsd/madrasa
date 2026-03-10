@@ -243,16 +243,13 @@ else:
 
         with tab_entry:
             sel_date = st.date_input("تاریخ منتخب کریں", date.today())
-            students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()
-
-            if not students:
-                st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔")
-            else:
-                for s, f in students:
+            students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()                                st.session_state[f"m_count_{s}"] += 1
+                         for s, f in students:
                     with st.expander(f"👤 {s} ولد {f}"):
                         att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
                         
                         sq_final, m_final, surah_sel = "", "", ""
+                        ayah_from, ayah_to = "", ""  # آیات کے لیے ویری ایبل
                         total_sq_m, total_m_m = 0, 0
                         total_sq_a, total_m_a = 0, 0
                         
@@ -261,11 +258,10 @@ else:
                             st.subheader("📖 نیا سبق")
                             surah_sel = st.selectbox("موجودہ سبق (سورت)", surahs_urdu, key=f"surah_{s}")
                             
-                            # آیات کا اضافہ (سے - تک)
                             col_a1, col_a2 = st.columns(2)
                             ayah_from = col_a1.text_input("آیت نمبر (سے)", key=f"af_{s}")
                             ayah_to = col_a2.text_input("آیت نمبر (تک)", key=f"at_{s}")
-                        
+
                             # --- سبقی ---
                             st.subheader("🔄 سبقی")
                             nagha_sq = st.checkbox("سبقی ناغہ", key=f"nsq_{s}")
@@ -314,16 +310,17 @@ else:
                             else: m_final = "ناغہ"
                         else: 
                             sq_final, m_final, surah_sel = att, att, att
+                            ayah_from, ayah_to = "", ""
 
-                                                if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
-                            # a_from اور a_to کا اضافہ کیا گیا ہے
+                        # بٹن کی پوزیشن اب بالکل درست جگہ پر ہے
+                        if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
                             c.execute("""INSERT INTO hifz_records 
                                       (r_date, s_name, f_name, t_name, surah, a_from, a_to, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
                                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
                                       (sel_date, s, f, st.session_state.username, surah_sel, ayah_from, ayah_to, sq_final, total_sq_a, total_sq_m, m_final, total_m_a, total_m_m, att))
                             conn.commit()
-                            st.success("ریکارڈ محفوظ!")
-
+                            st.success("ریکارڈ محفوظ ہو گیا!")
+       
     elif m == "📩 درخواستِ رخصت":
         st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
 
@@ -400,6 +397,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
