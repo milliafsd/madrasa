@@ -89,34 +89,129 @@ else:
     m = st.sidebar.radio("📌 مینو منتخب کریں", menu)
 
     # ================= ADMIN SECTION =================
-    if m == "📊 یومیہ تعلیمی رپورٹ":
-        st.header("📊 یومیہ تعلیمی رپورٹ")
-        c1, c2, c3 = st.columns([2, 1, 1])
-        s_type = c1.radio("رپورٹ کی قسم:", ["کلاس وائز (استاد)", "طالب علم وائز"], horizontal=True)
-        d1, d2 = c2.date_input("کب سے", date.today()), c3.date_input("کب تک", date.today())
+     elif m == "📊 تعلیمی رپورٹ":
+        st.markdown("<h2 style='text-align: center; color: #1e5631;'>📊 ماسٹر تعلیمی رپورٹ و تجزیہ</h2>", unsafe_allow_html=True)
 
-        target_list = [t[0] for t in c.execute(f"SELECT {'name' if s_type=='کلاس وائز (استاد)' else 'DISTINCT s_name'} FROM {'teachers' if s_type=='کلاس وائز (استاد)' else 'hifz_records'}").fetchall()]
-        if target_list:
-            target = st.selectbox("منتخب کریں:", target_list)
-            query = f"SELECT id, r_date, s_name, f_name, surah, sq_m, m_m, principal_note FROM hifz_records WHERE {'t_name' if s_type=='کلاس وائز (استاد)' else 's_name'}='{target}' AND r_date BETWEEN '{d1}' AND '{d2}' ORDER BY r_date DESC"
+        # --- فلٹرز (Filters) ---
+        with st.sidebar:
+            st.header("🔍 فلٹرز")
+            d1 = st.date_input("آغاز", date.today().replace(day=1))
+            d2 = st.date_input("اختتام", date.today())
+            
+            t_list = ["تمام"] + [t[0] for t in c.execute("SELECT DISTINCT t_name FROM hifz_records").fetchall()]
+            sel_t = st.selectbox("استاد/کلاس", t_list)
+            
+            s_list = ["تمام"] + [s[0] for s in c.execute("SELECT DISTINCT s_name FROM hifz_records").fetchall()]
+            sel_s = st.selectbox("طالب علم", s_list)
 
-            df = pd.read_sql_query(query, conn)
-            if not df.empty:
-                df.columns = ['آئی ڈی', 'تاریخ', 'نام طالب علم', 'ولدیت', 'سبق/سورت', 'سبقی غلطی', 'منزل غلطی', 'مہتمم کی رائے']
-                
-                # ڈاؤن لوڈ بٹن
-                csv = convert_df_to_csv(df)
-                st.download_button(label="📥 رپورٹ ایکسل (CSV) میں ڈاؤن لوڈ کریں", data=csv, file_name=f"Daily_Report_{target}.csv", mime='text/csv')
-                
-                edited = st.data_editor(df, hide_index=True, use_container_width=True)
-                if st.button("💾 تبدیلیاں محفوظ کریں"):
-                    for _, r in edited.iterrows():
-                        c.execute("UPDATE hifz_records SET surah=?, sq_m=?, m_m=?, principal_note=? WHERE id=?", (r['سبق/سورت'], r['سبقی غلطی'], r['منزل غلطی'], r['مہتمم کی رائے'], r['آئی ڈی']))
-                    conn.commit()
-                    st.success("تبدیلیاں کامیابی سے محفوظ ہو گئیں!")
+        # --- ڈیٹا کیوری (SQL Query) ---
+        query = "SELECT * FROM hifz_records WHERE r_date BETWEEN ? AND ?"
+        params = [d1, d2]
+        if sel_t != "تمام":
+            query += " AND t_name = ?"; params.append(sel_t)
+        if sel_s != "تمام":
+            query += " AND s_name = ?"; params.append(sel_s)
+        
+        df = pd.read_sql_query(query, conn, params=params)
+
+        if df.empty:
+            st.warning("منتخب کردہ فلٹرز کے مطابق کوئی ریکارڈ نہیں ملا۔")
+        else:
+            # --- 📈 تجزیاتی میٹرکس ---
+            st.subheader("💡 خلاصہ (Summary)")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("کل ریکارڈ", len(df))
+            m2.metric("حاضر طلباء", len(df[df['attendance'] == 'حاضر']))
+            m3.metric("اوسط سبقی غلطی", round(df['sq_m'].mean(), 1))
+            m4.metric("اوسط منزل غلطی", round(df['m_m'].mean(), 1))
+
+            # --- 📝 لائیو ڈیٹا ایڈیٹر (Update/Delete) ---
+            st.subheader("🛠️ ڈیٹا کنٹرول (تبدیلی اور حذف)")
+            st.info("ٹیبل میں کلک کر کے تبدیلی کریں، اور ڈیلیٹ کرنے کے لیے لائن سلیکٹ کر کے Delete دبائیں۔")
+            
+            # ڈیٹا ایڈیٹر کا جادو
+            edited_df = st.data_editor(
+                df, 
+                num_rows="dynamic", 
+                use_container_width=True, 
+                key="master_editor",
+                hide_index=True
+            )
+
+            # --- 💾 تبدیلیوں کو محفوظ کرنے کا لاجک ---
+            if st.button("💾 تمام تبدیلیاں مستقل محفوظ کریں"):
+                try:
+                    # 1. پہلے پرانا ریکارڈ ڈیلیٹ کریں (فلٹر شدہ رینج کا)
+                    c.execute(f"DELETE FROM hifz_records WHERE r_date BETWEEN '{d1}' AND '{d2}'" + 
+                              (f" AND t_name='{sel_t}'" if sel_t != "تمام" else "") + 
+                              (f" AND s_name='{sel_s}'" if sel_s != "تمام" else ""))
+                    
+                    # 2. ایڈیٹ شدہ ڈیٹا کو دوبارہ انسرٹ کریں
+                    edited_df.to_sql('hifz_records', conn, if_exists='append', index=False)
+                    st.success("✅ ڈیٹا کامیابی سے اپ ڈیٹ اور محفوظ کر دیا گیا ہے!")
                     st.rerun()
-            else: st.warning("اس تاریخ کا کوئی ریکارڈ نہیں ملا۔")
-        else: st.info("ڈیٹا دستیاب نہیں ہے۔")
+                except Exception as e:
+                    st.error(f"ایرر: {e}")
+
+            # --- 🖨️ پرنٹنگ سیکشن ---
+            st.divider()
+            st.subheader("🖨️ پرنٹ ایبل رپورٹ")
+            
+            m_name = st.text_input("مدرسہ کا نام لکھیں", "جامعہ ملیہ اسلامیہ")
+            
+            if st.button("📄 پرنٹ کے لیے رپورٹ تیار کریں"):
+                # HTML فارمیٹ برائے پرنٹ
+                html_code = f"""
+                <div dir="rtl" style="font-family: 'Arial'; padding: 30px; border: 5px double #1e5631; border-radius: 15px; background-color: white;">
+                    <div style="text-align: center;">
+                        <h1 style="color: #1e5631; margin-bottom: 5px;">{m_name}</h1>
+                        <p style="font-size: 18px; margin-top: 0;">تعلیمی و ترقیاتی رپورٹ ریکارڈ</p>
+                        <hr style="border: 1px solid #1e5631;">
+                    </div>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                        <tr style="background-color: #f2f2f2; border: 1px solid #ddd;">
+                            <th style="padding: 10px; border: 1px solid #ddd;">تاریخ</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">نام طالب علم</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">سورت/آیات</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">سبقی (غلطی)</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">منزل (غلطی)</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">حاضری</th>
+                        </tr>
+                """
+                for _, row in df.iterrows():
+                    html_code += f"""
+                        <tr style="border: 1px solid #ddd; text-align: center;">
+                            <td style="padding: 8px; border: 1px solid #ddd;">{row['r_date']}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{row['s_name']}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{row['surah']} ({row['a_from']}-{row['a_to']})</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{row['sq_m']}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{row['m_m']}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{row['attendance']}</td>
+                        </tr>
+                    """
+                
+                html_code += """
+                    </table>
+                    
+                    <div style="margin-top: 60px; display: flex; justify-content: space-between;">
+                        <div style="text-align: center; width: 30%;">
+                            <hr style="border: 0.5px solid black; width: 80%;">
+                            <p>دستخط استاد</p>
+                        </div>
+                        <div style="text-align: center; width: 30%;">
+                            <div style="border: 2px solid #ddd; height: 80px; width: 80px; margin: 0 auto; border-radius: 50%;"></div>
+                            <p>مہر ادارہ</p>
+                        </div>
+                        <div style="text-align: center; width: 30%;">
+                            <hr style="border: 0.5px solid black; width: 80%;">
+                            <p>دستخط مہتمم / صدر مدرس</p>
+                        </div>
+                    </div>
+                </div>
+                """
+                st.markdown(html_code, unsafe_allow_html=True)
+                st.write("💡 پرنٹ کرنے کے لیے کی بورڈ سے **Ctrl + P** دبائیں اور اسے PDF کے طور پر محفوظ کریں۔")
 
     elif m == "📜 ماہانہ رزلٹ کارڈ":
         st.header("📜 ماہانہ رزلٹ کارڈ")
@@ -409,6 +504,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
