@@ -342,7 +342,7 @@ else:
         if not students:
             st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔")
         else:
-            # یہاں سے لوپ شروع ہو رہا ہے
+                        # یہاں سے لوپ شروع ہو رہا ہے
             for s, f in students:
                 with st.expander(f"👤 {s} ولد {f}"):
                     att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
@@ -383,7 +383,7 @@ else:
                             st.session_state[f"m_count_{s}"] += 1
                             st.rerun()
 
-                        # محفوظ کریں
+                        # محفوظ کریں (حاضر طالب علم کے لیے)
                         if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
                             # حساب کتاب
                             sq_list, f_sq_m, f_sq_a = [], 0, 0
@@ -406,13 +406,8 @@ else:
                             conn.commit()
                             st.success(f"الحمدللہ! {s} کا ریکارڈ محفوظ ہو گیا۔")
                     
+                    # غیر حاضر یا رخصت کی صورت میں (یہاں سیدھ بالکل درست ہے)
                     else:
-                        if st.button(f"محفوظ کریں: {s}", key=f"save_abs_{s}"):
-                            c.execute("INSERT INTO hifz_records (r_date, s_name, f_name, t_name, attendance, surah, sq_p, m_p) VALUES (?,?,?,?,?,?,?,?)", (sel_date, s, f, st.session_state.username, att, att, att, att))
-                            conn.commit()
-                            st.success(f"{s} کی حاضری لگ گئی!")
-
-                     else: # غیر حاضر یا رخصت کی صورت میں
                         if st.button(f"محفوظ کریں: {s}", key=f"save_absent_{s}"):
                             c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, attendance, surah, sq_p, m_p) 
                                       VALUES (?,?,?,?,?,?,?,?)""", (sel_date, s, f, st.session_state.username, att, att, att, att))
@@ -495,6 +490,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
