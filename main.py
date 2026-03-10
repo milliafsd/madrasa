@@ -237,91 +237,82 @@ else:
         else: st.info("حاضری کا کوئی ریکارڈ موجود نہیں ہے۔")
 
     # ================= TEACHER SECTION =================
-    elif m == "📝 تعلیمی اندراج":
+        elif m == "📝 تعلیمی اندراج":
         st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
-        tab_entry = st.container() 
+        sel_date = st.date_input("تاریخ منتخب کریں", date.today())
+        
+        # لائن 246 کو یہاں درست کر دیا گیا ہے
+        students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()
 
-        with tab_entry:
-            sel_date = st.date_input("تاریخ منتخب کریں", date.today())
-            students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?",
-            (st.session_state.username,)).fetchall()                                st.session_state[f"m_count_{s}"] += 1
-                         for s, f in students:
-                    with st.expander(f"👤 {s} ولد {f}"):
-                        att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
+        if not students:
+            st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔")
+        else:
+            for s, f in students:
+                with st.expander(f"👤 {s} ولد {f}"):
+                    att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
+                    
+                    sq_final, m_final, surah_sel = "", "", ""
+                    ayah_from, ayah_to = "", ""
+                    total_sq_m, total_m_m = 0, 0
+                    total_sq_a, total_m_a = 0, 0
+                    
+                    if att == "حاضر":
+                        # سبق اور آیات
+                        st.subheader("📖 نیا سبق")
+                        surah_sel = st.selectbox("موجودہ سبق (سورت)", surahs_urdu, key=f"surah_{s}")
+                        c_a1, c_a2 = st.columns(2)
+                        ayah_from = c_a1.text_input("آیت (سے)", key=f"af_{s}")
+                        ayah_to = c_a2.text_input("آیت (تک)", key=f"at_{s}")
+
+                        # سبقی کا حصہ
+                        st.subheader("🔄 سبقی")
+                        if f"sq_count_{s}" not in st.session_state: st.session_state[f"sq_count_{s}"] = 1
+                        sq_data = []
+                        for i in range(st.session_state[f"sq_count_{s}"]):
+                            c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+                            p_num = c1.selectbox(f"پارہ {i+1}", paras, key=f"sqp_{s}_{i}")
+                            p_vol = c2.selectbox(f"مقدار {i+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"sqv_{s}_{i}")
+                            p_atk = c3.number_input(f"اٹکن {i+1}", 0, key=f"sqa_{s}_{i}")
+                            p_err = c4.number_input(f"غلطی {i+1}", 0, key=f"sqe_{s}_{i}")
+                            sq_data.append(f"{p_num}:{p_vol}(غ:{p_err},ا:{p_atk})")
+                            total_sq_m += p_err
+                            total_sq_a += p_atk
                         
-                        sq_final, m_final, surah_sel = "", "", ""
-                        ayah_from, ayah_to = "", ""  # آیات کے لیے ویری ایبل
-                        total_sq_m, total_m_m = 0, 0
-                        total_sq_a, total_m_a = 0, 0
+                        if st.button(f"➕ مزید سبقی", key=f"btn_sq_{s}"):
+                            st.session_state[f"sq_count_{s}"] += 1
+                            st.rerun()
+                        sq_final = " | ".join(sq_data)
+
+                        # منزل کا حصہ
+                        st.subheader("🏠 منزل")
+                        if f"m_count_{s}" not in st.session_state: st.session_state[f"m_count_{s}"] = 1
+                        m_data = []
+                        for j in range(st.session_state[f"m_count_{s}"]):
+                            mc1, mc2, mc3, mc4 = st.columns([2, 2, 1, 1])
+                            mp_n = mc1.selectbox(f"منزل پ {j+1}", paras, key=f"mp_{s}_{j}")
+                            mp_v = mc2.selectbox(f"مقدار {j+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"mv_{s}_{j}")
+                            mp_a = mc3.number_input(f"اٹکن {j+1}", 0, key=f"ma_{s}_{j}")
+                            mp_e = mc4.number_input(f"غلطی {j+1}", 0, key=f"me_{s}_{j}")
+                            m_data.append(f"{mp_n}:{mp_v}(غ:{mp_e},ا:{mp_a})")
+                            total_m_m += mp_e
+                            total_m_a += mp_a
                         
-                        if att == "حاضر":
-                            # --- سبق (Surah) ---
-                            st.subheader("📖 نیا سبق")
-                            surah_sel = st.selectbox("موجودہ سبق (سورت)", surahs_urdu, key=f"surah_{s}")
-                            
-                            col_a1, col_a2 = st.columns(2)
-                            ayah_from = col_a1.text_input("آیت نمبر (سے)", key=f"af_{s}")
-                            ayah_to = col_a2.text_input("آیت نمبر (تک)", key=f"at_{s}")
+                        if st.button(f"➕ مزید منزل", key=f"btn_m_{s}"):
+                            st.session_state[f"m_count_{s}"] += 1
+                            st.rerun()
+                        m_final = " | ".join(m_data)
+                    else:
+                        sq_final, m_final, surah_sel = att, att, att
 
-                            # --- سبقی ---
-                            st.subheader("🔄 سبقی")
-                            nagha_sq = st.checkbox("سبقی ناغہ", key=f"nsq_{s}")
-                            if not nagha_sq:
-                                if f"sq_count_{s}" not in st.session_state: st.session_state[f"sq_count_{s}"] = 1
-                                sq_data = []
-                                for i in range(st.session_state[f"sq_count_{s}"]):
-                                    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-                                    p_num = c1.selectbox(f"پارہ {i+1}", paras, key=f"sqp_{s}_{i}")
-                                    p_vol = c2.selectbox(f"مقدار {i+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"sqv_{s}_{i}")
-                                    p_atk = c3.number_input(f"اٹکن {i+1}", 0, key=f"sqa_{s}_{i}")
-                                    p_err = c4.number_input(f"غلطی {i+1}", 0, key=f"sqe_{s}_{i}")
-                                    
-                                    sq_data.append(f"{p_num}:{p_vol}(غ:{p_err},ا:{p_atk})")
-                                    total_sq_m += p_err
-                                    total_sq_a += p_atk
-
-                                if st.button(f"➕ مزید سبقی پارہ", key=f"add_sq_{s}"):
-                                    st.session_state[f"sq_count_{s}"] += 1
-                                    st.rerun()
-                                sq_final = " | ".join(sq_data)
-                            else: sq_final = "ناغہ"
-
-                            st.divider()
-                            # --- منزل ---
-                            st.subheader("🏠 منزل")
-                            nagha_m = st.checkbox("منزل ناغہ", key=f"nm_{s}")
-                            if not nagha_m:
-                                if f"m_count_{s}" not in st.session_state: st.session_state[f"m_count_{s}"] = 1
-                                m_data = []
-                                for j in range(st.session_state[f"m_count_{s}"]):
-                                    mc1, mc2, mc3, mc4 = st.columns([2, 2, 1, 1])
-                                    mp_num = mc1.selectbox(f"منزل پ {j+1}", paras, key=f"mp_{s}_{j}")
-                                    mp_vol = mc2.selectbox(f"مقدار {j+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"mv_{s}_{j}")
-                                    mp_atk = mc3.number_input(f"اٹکن {j+1}", 0, key=f"ma_{s}_{j}")
-                                    mp_err = mc4.number_input(f"غلطی {j+1}", 0, key=f"me_{s}_{j}")
-                                    
-                                    m_data.append(f"{mp_num}:{mp_vol}(غ:{mp_err},ا:{mp_atk})")
-                                    total_m_m += mp_err
-                                    total_m_a += mp_atk
-
-                                if st.button(f"➕ مزید منزل پارہ", key=f"add_m_{s}"):
-                                    st.session_state[f"m_count_{s}"] += 1
-                                    st.rerun()
-                                m_final = " | ".join(m_data)
-                            else: m_final = "ناغہ"
-                        else: 
-                            sq_final, m_final, surah_sel = att, att, att
-                            ayah_from, ayah_to = "", ""
-
-                        # بٹن کی پوزیشن اب بالکل درست جگہ پر ہے
-                        if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
-                            c.execute("""INSERT INTO hifz_records 
-                                      (r_date, s_name, f_name, t_name, surah, a_from, a_to, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
-                                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
-                                      (sel_date, s, f, st.session_state.username, surah_sel, ayah_from, ayah_to, sq_final, total_sq_a, total_sq_m, m_final, total_m_a, total_m_m, att))
-                            conn.commit()
-                            st.success("ریکارڈ محفوظ ہو گیا!")
-       
+                    # ڈیٹا بیس میں محفوظ کرنا
+                    if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
+                        c.execute("""INSERT INTO hifz_records 
+                                  (r_date, s_name, f_name, t_name, surah, a_from, a_to, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
+                                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
+                                  (sel_date, s, f, st.session_state.username, surah_sel, ayah_from, ayah_to, sq_final, total_sq_a, total_sq_m, m_final, total_m_a, total_m_m, att))
+                        conn.commit()
+                        st.success(f"{s} کا ریکارڈ محفوظ ہو گیا!")
+                        
     elif m == "📩 درخواستِ رخصت":
         st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
 
@@ -398,6 +389,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
