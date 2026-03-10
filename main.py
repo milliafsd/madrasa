@@ -22,6 +22,18 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, t_name TEXT, a_date DATE, arrival TEXT, departure TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS leave_requests 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, t_name TEXT, reason TEXT, start_date DATE, back_date DATE, status TEXT, request_date DATE)''')
+    c.execute("""CREATE TABLE IF NOT EXISTS exams (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            s_name TEXT, 
+            f_name TEXT, 
+            para_no INTEGER, 
+            start_date TEXT, 
+            end_date TEXT,
+            q1 INTEGER, q2 INTEGER, q3 INTEGER, q4 INTEGER, q5 INTEGER,
+            total INTEGER, 
+            grade TEXT,
+            status TEXT)""")
+conn.commit()
 
     # کالمز کا اضافہ (نئے فیچرز کے لیے)
     cols = [("students", "phone", "TEXT"), ("students", "address", "TEXT"), ("students", "id_card", "TEXT"), 
@@ -494,13 +506,93 @@ else:
             conn.commit()
             st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
 
+   elif m == "🎓 امتحانی تعلیمی رپورٹ":
+    st.header("🎓 امتحانی تعلیمی رپورٹ (حفظِ قرآن)")
+    
+    tab1, tab2 = st.tabs(["📝 نیا امتحان", "📜 رزلٹ کارڈز"])
+    
+    with tab1:
+        st.subheader("طالب علم کا انتخاب کریں")
+        # طلباء کی فہرست سے نام نکالیں
+        student_list = [f"{row[0]} ولد {row[1]}" for row in students]
+        selected_s = st.selectbox("طالب علم", student_list)
+        s_name, f_name = selected_s.split(" ولد ")
+        
+        col1, col2, col3 = st.columns(3)
+        para = col1.number_input("پارہ نمبر", 1, 30)
+        s_date = col2.date_input("آغازِ پارہ")
+        e_date = col3.date_input("اختتامِ پارہ")
+        
+        st.divider()
+        st.markdown("### 🖋️ ممتحن (مہتمم صاحب) کے لیے")
+        
+        # 5 سوالات کے نمبر
+        c1, c2, c3, c4, c5 = st.columns(5)
+        q1 = c1.number_input("سوال 1", 0, 20, key="q1")
+        q2 = c2.number_input("سوال 2", 0, 20, key="q2")
+        q3 = c3.number_input("سوال 3", 0, 20, key="q3")
+        q4 = c4.number_input("سوال 4", 0, 20, key="q4")
+        q5 = c5.number_input("سوال 5", 0, 20, key="q5")
+        
+        total = q1 + q2 + q3 + q4 + q5
+        
+        # گریڈ کی لاجک
+        grade = ""
+        status = "کامیاب"
+        if total >= 90: grade = "ممتاز"
+        elif total >= 80: grade = "جید جداً"
+        elif total >= 70: grade = "جید"
+        elif total >= 60: grade = "مقبول"
+        else: 
+            grade = "دوبارہ کوشش کریں"
+            status = "ناکام"
+
+        st.metric("کل نمبر", f"{total} / 100", f"گریڈ: {grade}")
+
+        if st.button("امتحانی رزلٹ محفوظ کریں"):
+            c.execute("""INSERT INTO exams (s_name, f_name, para_no, start_date, end_date, q1, q2, q3, q4, q5, total, grade, status) 
+                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
+                      (s_name, f_name, para, str(s_date), str(e_date), q1, q2, q3, q4, q5, total, grade, status))
+            conn.commit()
+            if status == "کامیاب":
+                st.success(f"مبارک ہو! {s_name} نے پارہ نمبر {para} پاس کر لیا ہے۔")
+            else:
+                st.warning("نتیجہ محفوظ کر لیا گیا ہے۔ طالب علم کو دوبارہ تیاری کی ہدایت کریں۔")
+
+    with tab2:
+        # یہاں رزلٹ کارڈ پرنٹ کرنے کا آپشن ہوگا
+        results = c.execute("SELECT * FROM exams ORDER BY id DESC").fetchall()
+        for res in results:
+            with st.expander(f"پارہ {res[3]} - {res[1]} ({res[12]})"):
+                # رزلٹ کارڈ کا ڈیزائن (HTML)
+                card_html = f"""
+                <div style="border: 5px double #1e5631; padding: 20px; text-align: center; direction: rtl; background-color: #f9fff9;">
+                    <h2 style="color: #1e5631; margin-bottom: 0;">جامعہ ملیہ اسلامیہ</h2>
+                    <p style="margin-top: 0;">امتحانی تعلیمی رپورٹ (حفظِ قرآن)</p>
+                    <hr>
+                    <table style="width: 100%; text-align: right; border: none;">
+                        <tr><td><b>نام:</b> {res[1]}</td><td><b>ولدیت:</b> {res[2]}</td></tr>
+                        <tr><td><b>پارہ نمبر:</b> {res[3]}</td><td><b>کیفیت:</b> {res[12]}</td></tr>
+                        <tr><td><b>تاریخ آغاز:</b> {res[4]}</td><td><b>تاریخ اختتام:</b> {res[5]}</td></tr>
+                    </table>
+                    <div style="margin: 20px 0; font-size: 24px; font-weight: bold; color: #1e5631;">
+                        حاصل کردہ نمبر: {res[11]} / 100
+                    </div>
+                    <div style="display: flex; justify-content: space-around; margin-top: 30px;">
+                        <div><hr style="width: 100px;">دستخط استاد</div>
+                        <div><hr style="width: 100px;">دستخط مہتمم</div>
+                    </div>
+                </div>
+                """
+                st.markdown(card_html, unsafe_allow_html=True)
+                st.button(f"پرنٹ رزلٹ کارڈ {res[0]}", on_click=None) # پرنٹ کی لاجک یہاں آئے گی
+
+
     # ================= LOGOUT =================
     st.sidebar.divider()
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
-        st.rerun()
-
-
+        st.rerun() 
 
 
 
