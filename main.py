@@ -550,7 +550,7 @@ else:
             conn.commit()
             st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
     elif m == "🎓 امتحانی تعلیمی رپورٹ":
-    render_exam_report()  #    
+        render_exam_report()  #    
     # درست کالم کے ناموں کے ساتھ ڈیٹا حاصل کرنا
     try:
         students = c.execute("SELECT s_name, f_name FROM students").fetchall()
@@ -647,6 +647,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
