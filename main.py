@@ -188,15 +188,7 @@ else:
                             <td style="padding: 8px; border: 1px solid #ddd;">{row['attendance']}</td>
                         </tr>
                     """
-                <style>
-    @media print {
-        .no-print { display: none; }
-        table { width: 100%; border-collapse: collapse; }
-        th { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; }
-    }
-    table { font-family: 'Urdu Typesetting', 'Jameel Noori Nastaleeq', sans-serif; direction: rtl; }
-    th, td { border: 1px solid #000; padding: 8px; text-align: center; }
-</style>
+                    
           html_code += """
                     </table>
                     
@@ -496,6 +488,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
