@@ -58,87 +58,93 @@ def convert_df_to_csv(df):
 
 # --- امتحانی رپورٹ کا فنکشن ---
 def render_exam_report():
-    st.subheader("🎓 امتحانی تعلیمی رپورٹ")
+    st.subheader("🎓 امتحانی تعلیمی نظام")
     
-    tab1, tab2 = st.tabs(["📝 نیا رزلٹ درج کریں", "🖨️ رزلٹ کارڈ پرنٹ کریں"])
-    
-    with tab1:
-        try:
-            students = c.execute("SELECT name, father_name FROM students").fetchall()
-        except sqlite3.OperationalError:
-            st.error("❌ ڈیٹا بیس میں کالم 'name' یا 'father_name' نہیں مل رہا۔")
-            return
+    # صارف کی قسم چیک کریں
+    u_type = st.session_state.user_type
 
+    if u_type == "teacher":
+        st.info("📢 **استاد پینل:** یہاں سے آپ طالب علم کا نام امتحان کے لیے بھیج سکتے ہیں۔")
+        
+        # ڈیٹا بیس سے اس استاد کے طلباء لائیں
+        students = c.execute("SELECT name, father_name FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()
+        
         if not students:
-            st.warning("⚠️ پہلے طالب علم کا اندراج کریں!")
-            return
-
-        student_list = [f"{s[0]} ولد {s[1]}" for s in students]
-        selected_s = st.selectbox("طالب علم منتخب کریں", student_list)
-        s_name, f_name = selected_s.split(" ولد ")
-        
-        col1, col2, col3 = st.columns(3)
-        para = col1.number_input("پارہ نمبر", 1, 30)
-        s_date = col2.date_input("آغازِ پارہ")
-        e_date = col3.date_input("اختتامِ پارہ")
-        
-        st.markdown("### 🖋️ ممتحن (مہتمم صاحب) کے نمبرات")
-        q_cols = st.columns(5)
-        q1 = q_cols[0].number_input("س 1", 0, 20)
-        q2 = q_cols[1].number_input("س 2", 0, 20)
-        q3 = q_cols[2].number_input("س 3", 0, 20)
-        q4 = q_cols[3].number_input("س 4", 0, 20)
-        q5 = q_cols[4].number_input("س 5", 0, 20)
-        
-        total = q1 + q2 + q3 + q4 + q5
-        
-        if total >= 90: grade, status = "ممتاز", "کامیاب"
-        elif total >= 80: grade, status = "جید جداً", "کامیاب"
-        elif total >= 70: grade, status = "جید", "کامیاب"
-        elif total >= 60: grade, status = "مقبول", "کامیاب"
-        else: grade, status = "دوبارہ کوشش کریں", "ناکام"
-
-        st.info(f"کل نمبر: {total} | گریڈ: {grade} | کیفیت: {status}")
-
-        if st.button("امتحانی ریکارڈ محفوظ کریں"):
-            check = c.execute("SELECT 1 FROM exams WHERE s_name=? AND f_name=? AND para_no=?", (s_name, f_name, para)).fetchone()
-            if check:
-                st.error(f"🛑 ریکارڈ پہلے سے موجود ہے! {s_name} کا پارہ نمبر {para} کا امتحان ہو چکا ہے۔")
-            else:
-                c.execute("""INSERT INTO exams (s_name, f_name, para_no, start_date, end_date, q1, q2, q3, q4, q5, total, grade, status) 
-                             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
-                          (s_name, f_name, para, str(s_date), str(e_date), q1, q2, q3, q4, q5, total, grade, status))
-                conn.commit()
-                st.success(f"✅ {s_name} کا رزلٹ محفوظ ہو گیا۔")
-                st.balloons()
-
-    with tab2:
-        results = c.execute("SELECT id, s_name, f_name, para_no, start_date, end_date, total, grade, status FROM exams ORDER BY id DESC").fetchall()
-        if not results:
-            st.info("ابھی تک کوئی رزلٹ جاری نہیں کیا گیا۔")
+            st.warning("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔")
         else:
-            for res in results:
-                with st.expander(f"پارہ {res[3]} - {res[1]} ({res[8]})"):
-                    card_html = f"""
-                    <div style="border: 5px double #1e5631; padding: 20px; text-align: center; direction: rtl; background-color: #f9fff9;">
-                        <h2 style="color: #1e5631; margin-bottom: 0;">جامعہ ملیہ اسلامیہ</h2>
-                        <p style="margin-top: 0;">امتحانی تعلیمی رپورٹ (حفظِ قرآن)</p>
-                        <hr>
-                        <table style="width: 100%; text-align: right; border: none;">
-                            <tr><td><b>نام:</b> {res[1]}</td><td><b>ولدیت:</b> {res[2]}</td></tr>
-                            <tr><td><b>پارہ نمبر:</b> {res[3]}</td><td><b>کیفیت:</b> {res[8]}</td></tr>
-                            <tr><td><b>تاریخ آغاز:</b> {res[4]}</td><td><b>تاریخ اختتام:</b> {res[5]}</td></tr>
-                        </table>
-                        <div style="margin: 20px 0; font-size: 24px; font-weight: bold; color: #1e5631;">
-                            حاصل کردہ نمبر: {res[6]} / 100
-                        </div>
-                        <div style="display: flex; justify-content: space-around; margin-top: 30px;">
-                            <div><hr style="width: 100px;">دستخط استاد</div>
-                            <div><hr style="width: 100px;">دستخط مہتمم</div>
-                        </div>
-                    </div>
-                    """
-                    st.markdown(card_html, unsafe_allow_html=True)
+            with st.form("exam_request_form"):
+                s_list = [f"{s[0]} ولد {s[1]}" for s in students]
+                sel_student = st.selectbox("طالب علم منتخب کریں", s_list)
+                para_to_test = st.number_input("پارہ نمبر جس کا امتحان لینا ہے", 1, 30)
+                s_date = st.date_input("آغازِ امتحان (تاریخِ درخواست)", date.today())
+                
+                if st.form_submit_button("امتحان کے لیے نامزد کریں 🚀"):
+                    s_name, f_name = sel_student.split(" ولد ")
+                    # چیک کریں کہ کیا اس پارے کا امتحان پہلے سے پینڈنگ تو نہیں
+                    exists = c.execute("SELECT 1 FROM exams WHERE s_name=? AND f_name=? AND para_no=? AND status='پینڈنگ'", (s_name, f_name, para_to_test)).fetchone()
+                    
+                    if exists:
+                        st.error("🛑 اس طالب علم کی اس پارے کے لیے درخواست پہلے سے مہتمم صاحب کے پاس موجود ہے۔")
+                    else:
+                        c.execute("INSERT INTO exams (s_name, f_name, para_no, start_date, status) VALUES (?,?,?,?,?)",
+                                  (s_name, f_name, para_to_test, str(s_date), "پینڈنگ"))
+                        conn.commit()
+                        st.success(f"✅ {s_name} (پارہ {para_to_test}) کی درخواست بھیج دی گئی ہے۔")
+
+    elif u_type == "admin":
+        tab1, tab2 = st.tabs(["📥 پینڈنگ امتحانات (مہتمم پینل)", "📜 مکمل شدہ ریکارڈ (ہسٹری)"])
+        
+        with tab1:
+            st.markdown("### 🖋️ ممتحن (مہتمم صاحب) کے نمبرات")
+            # صرف پینڈنگ امتحانات لائیں
+            pending = c.execute("SELECT id, s_name, f_name, para_no, start_date FROM exams WHERE status='پینڈنگ'").fetchall()
+            
+            if not pending:
+                st.info("فی الحال کوئی طالب علم امتحان کے لیے نامزد نہیں ہے۔")
+            else:
+                for eid, sn, fn, pn, sd in pending:
+                    with st.expander(f"📝 امتحان: {sn} ولد {fn} (پارہ {pn}) - درخواست تاریخ: {sd}"):
+                        st.write("پانچ سوالات کے نمبر درج کریں (ہر سوال 20 نمبر کا ہے):")
+                        q_cols = st.columns(5)
+                        q1 = q_cols[0].number_input("س 1", 0, 20, key=f"q1_{eid}")
+                        q2 = q_cols[1].number_input("س 2", 0, 20, key=f"q2_{eid}")
+                        q3 = q_cols[2].number_input("س 3", 0, 20, key=f"q3_{eid}")
+                        q4 = q_cols[3].number_input("س 4", 0, 20, key=f"q4_{eid}")
+                        q5 = q_cols[4].number_input("س 5", 0, 20, key=f"q5_{eid}")
+                        
+                        total = q1 + q2 + q3 + q4 + q5
+                        
+                        # گریڈ کی منطق
+                        if total >= 90: g, s_msg = "ممتاز", "کامیاب"
+                        elif total >= 80: g, s_msg = "جید جداً", "کامیاب"
+                        elif total >= 70: g, s_msg = "جید", "کامیاب"
+                        elif total >= 60: g, s_msg = "مقبول", "کامیاب"
+                        else: g, s_msg = "دوبارہ کوشش کریں", "ناکام"
+                        
+                        st.markdown(f"**کل نمبر:** `{total}` | **گریڈ:** `{g}` | **کیفیت:** `{s_msg}`")
+                        
+                        if st.button("امتحان کلیئر کریں اور محفوظ کریں ✅", key=f"save_{eid}"):
+                            e_date = str(date.today())
+                            c.execute("""UPDATE exams SET 
+                                      q1=?, q2=?, q3=?, q4=?, q5=?, total=?, grade=?, status=?, end_date=? 
+                                      WHERE id=?""", (q1, q2, q3, q4, q5, total, g, s_msg, e_date, eid))
+                            conn.commit()
+                            st.success(f"✅ {sn} کا پارہ {pn} کلیئر کر دیا گیا ہے۔")
+                            st.rerun()
+
+        with tab2:
+            st.markdown("### 📜 امتحانی ہسٹری")
+            history_df = pd.read_sql_query("""SELECT s_name as نام, f_name as ولدیت, para_no as پارہ, 
+                                           start_date as آغاز, end_date as اختتام, 
+                                           total as نمبر, grade as درجہ, status as کیفیت 
+                                           FROM exams WHERE status != 'پینڈنگ' ORDER BY id DESC""", conn)
+            if not history_df.empty:
+                st.dataframe(history_df, use_container_width=True, hide_index=True)
+                
+                # سرٹیفکیٹ پرنٹنگ کا آپشن (اختیاری)
+                st.download_button("رپورٹ ڈاؤن لوڈ کریں (CSV)", convert_df_to_csv(history_df), "exam_history.csv", "text/csv")
+            else:
+                st.info("ابھی تک کوئی امتحان مکمل نہیں ہوا۔")
 
 # --- 2. اسٹائلنگ ---
 st.set_page_config(page_title="جامعہ ملیہ اسلامیہ پورٹل", layout="wide")
@@ -451,5 +457,6 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
