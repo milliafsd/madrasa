@@ -247,72 +247,92 @@ else:
         if not students:
             st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔")
         else:
-            for s, f in students:
-                with st.expander(f"👤 {s} ولد {f}"):
-                    att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
-                    
-                    sq_final, m_final, surah_sel = "", "", ""
-                    ayah_from, ayah_to = "", ""
-                    total_sq_m, total_m_m = 0, 0
-                    total_sq_a, total_m_a = 0, 0
-                    
-                    if att == "حاضر":
-                        # سبق اور آیات
-                        st.subheader("📖 نیا سبق")
-                        surah_sel = st.selectbox("موجودہ سبق (سورت)", surahs_urdu, key=f"surah_{s}")
-                        c_a1, c_a2 = st.columns(2)
-                        ayah_from = c_a1.text_input("آیت (سے)", key=f"af_{s}")
-                        ayah_to = c_a2.text_input("آیت (تک)", key=f"at_{s}")
-
-                        # سبقی کا حصہ
-                        st.subheader("🔄 سبقی")
-                        if f"sq_count_{s}" not in st.session_state: st.session_state[f"sq_count_{s}"] = 1
-                        sq_data = []
-                        for i in range(st.session_state[f"sq_count_{s}"]):
-                            c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-                            p_num = c1.selectbox(f"پارہ {i+1}", paras, key=f"sqp_{s}_{i}")
-                            p_vol = c2.selectbox(f"مقدار {i+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"sqv_{s}_{i}")
-                            p_atk = c3.number_input(f"اٹکن {i+1}", 0, key=f"sqa_{s}_{i}")
-                            p_err = c4.number_input(f"غلطی {i+1}", 0, key=f"sqe_{s}_{i}")
-                            sq_data.append(f"{p_num}:{p_vol}(غ:{p_err},ا:{p_atk})")
-                            total_sq_m += p_err
-                            total_sq_a += p_atk
+                            for s, f in students:
+                    with st.expander(f"👤 {s} ولد {f}"):
+                        att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
                         
-                        if st.button(f"➕ مزید سبقی", key=f"btn_sq_{s}"):
-                            st.session_state[f"sq_count_{s}"] += 1
-                            st.rerun()
-                        sq_final = " | ".join(sq_data)
+                        if att == "حاضر":
+                            # --- سبق اور آیات ---
+                            st.subheader("📖 نیا سبق")
+                            surah_sel = st.selectbox("موجودہ سبق (سورت)", surahs_urdu, key=f"surah_{s}")
+                            c_a1, c_a2 = st.columns(2)
+                            ayah_from = c_a1.text_input("آیت (سے)", key=f"af_{s}")
+                            ayah_to = c_a2.text_input("آیت (تک)", key=f"at_{s}")
 
-                        # منزل کا حصہ
-                        st.subheader("🏠 منزل")
-                        if f"m_count_{s}" not in st.session_state: st.session_state[f"m_count_{s}"] = 1
-                        m_data = []
-                        for j in range(st.session_state[f"m_count_{s}"]):
-                            mc1, mc2, mc3, mc4 = st.columns([2, 2, 1, 1])
-                            mp_n = mc1.selectbox(f"منزل پ {j+1}", paras, key=f"mp_{s}_{j}")
-                            mp_v = mc2.selectbox(f"مقدار {j+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"mv_{s}_{j}")
-                            mp_a = mc3.number_input(f"اٹکن {j+1}", 0, key=f"ma_{s}_{j}")
-                            mp_e = mc4.number_input(f"غلطی {j+1}", 0, key=f"me_{s}_{j}")
-                            m_data.append(f"{mp_n}:{mp_v}(غ:{mp_e},ا:{mp_a})")
-                            total_m_m += mp_e
-                            total_m_a += mp_a
-                        
-                        if st.button(f"➕ مزید منزل", key=f"btn_m_{s}"):
-                            st.session_state[f"m_count_{s}"] += 1
-                            st.rerun()
-                        m_final = " | ".join(m_data)
-                    else:
-                        sq_final, m_final, surah_sel = att, att, att
+                            # --- سبقی کا حصہ ---
+                            st.subheader("🔄 سبقی")
+                            if f"sq_count_{s}" not in st.session_state: st.session_state[f"sq_count_{s}"] = 1
+                            
+                            # صرف ان پٹ باکسز دکھانا
+                            for i in range(st.session_state[f"sq_count_{s}"]):
+                                c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+                                c1.selectbox(f"پارہ {i+1}", paras, key=f"sqp_{s}_{i}")
+                                c2.selectbox(f"مقدار {i+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"sqv_{s}_{i}")
+                                c3.number_input(f"اٹکن {i+1}", 0, key=f"sqa_{s}_{i}")
+                                c4.number_input(f"غلطی {i+1}", 0, key=f"sqe_{s}_{i}")
+                            
+                            if st.button(f"➕ مزید سبقی پارہ", key=f"btn_sq_{s}"):
+                                st.session_state[f"sq_count_{s}"] += 1
+                                st.rerun()
 
-                    # ڈیٹا بیس میں محفوظ کرنا
-                    if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
-                        c.execute("""INSERT INTO hifz_records 
-                                  (r_date, s_name, f_name, t_name, surah, a_from, a_to, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
-                                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
-                                  (sel_date, s, f, st.session_state.username, surah_sel, ayah_from, ayah_to, sq_final, total_sq_a, total_sq_m, m_final, total_m_a, total_m_m, att))
-                        conn.commit()
-                        st.success(f"{s} کا ریکارڈ محفوظ ہو گیا!")
+                            # --- منزل کا حصہ ---
+                            st.subheader("🏠 منزل")
+                            if f"m_count_{s}" not in st.session_state: st.session_state[f"m_count_{s}"] = 1
+                            
+                            for j in range(st.session_state[f"m_count_{s}"]):
+                                mc1, mc2, mc3, mc4 = st.columns([2, 2, 1, 1])
+                                mc1.selectbox(f"منزل پ {j+1}", paras, key=f"mp_{s}_{j}")
+                                mc2.selectbox(f"مقدار {j+1}", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"mv_{s}_{j}")
+                                mc3.number_input(f"اٹکن {j+1}", 0, key=f"ma_{s}_{j}")
+                                mc4.number_input(f"غلطی {j+1}", 0, key=f"me_{s}_{j}")
+                            
+                            if st.button(f"➕ مزید منزل پارہ", key=f"btn_m_{s}"):
+                                st.session_state[f"m_count_{s}"] += 1
+                                st.rerun()
+
+                            # --- ڈیٹا محفوظ کرنے کا بٹن (یہاں حساب ہوگا) ---
+                            if st.button(f"محفوظ کریں: {s}", key=f"save_{s}"):
+                                # سبقی کا ڈیٹا جمع کرنا
+                                final_sq_m, final_sq_a = 0, 0
+                                sq_list = []
+                                for i in range(st.session_state[f"sq_count_{s}"]):
+                                    p = st.session_state[f"sqp_{s}_{i}"]
+                                    v = st.session_state[f"sqv_{s}_{i}"]
+                                    a = st.session_state[f"sqa_{s}_{i}"]
+                                    e = st.session_state[f"sqe_{s}_{i}"]
+                                    sq_list.append(f"{p}:{v}(غ:{e},ا:{a})")
+                                    final_sq_m += e
+                                    final_sq_a += a
+                                
+                                # منزل کا ڈیٹا جمع کرنا
+                                final_m_m, final_m_a = 0, 0
+                                m_list = []
+                                for j in range(st.session_state[f"m_count_{s}"]):
+                                    mp = st.session_state[f"mp_{s}_{j}"]
+                                    mv = st.session_state[f"mv_{s}_{j}"]
+                                    ma = st.session_state[f"ma_{s}_{j}"]
+                                    me = st.session_state[f"me_{s}_{j}"]
+                                    m_list.append(f"{mp}:{mv}(غ:{me},ا:{ma})")
+                                    final_m_m += me
+                                    final_m_a += ma
+
+                                # ڈیٹا بیس میں انٹری
+                                c.execute("""INSERT INTO hifz_records 
+                                          (r_date, s_name, f_name, t_name, surah, a_from, a_to, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance) 
+                                          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", 
+                                          (sel_date, s, f, st.session_state.username, surah_sel, ayah_from, ayah_to, 
+                                           " | ".join(sq_list), final_sq_a, final_sq_m, " | ".join(m_list), final_m_a, final_m_m, att))
+                                conn.commit()
+                                st.success(f"الحمدللہ! {s} کا ریکارڈ محفوظ ہو گیا۔")
+                                st.rerun()
                         
+                        else: # غیر حاضر یا رخصت کی صورت میں
+                            if st.button(f"محفوظ کریں: {s}", key=f"save_absent_{s}"):
+                                c.execute("""INSERT INTO hifz_records (r_date, s_name, f_name, t_name, attendance, surah, sq_p, m_p) 
+                                          VALUES (?,?,?,?,?,?,?,?)""", (sel_date, s, f, st.session_state.username, att, att, att, att))
+                                conn.commit()
+                                st.success(f"{s} کی حاضری ({att}) لگ گئی ہے۔")
+                                
     elif m == "📩 درخواستِ رخصت":
         st.header("📩 اسمارٹ رخصت و نوٹیفیکیشن")
 
@@ -389,6 +409,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
