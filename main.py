@@ -188,48 +188,24 @@ else:
     m = st.sidebar.radio("📌 مینو منتخب کریں", menu)
 
     # ================= ADMIN SECTION =================
-    if m == "📊 یومیہ تعلیمی رپورٹ":
-        st.markdown("<h2 style='text-align: center; color: #1e5631;'>📊 ماسٹر تعلیمی رپورٹ و تجزیہ</h2>", unsafe_allow_html=True)
-
-        with st.sidebar:
-            st.header("🔍 فلٹرز")
-            d1 = st.date_input("آغاز", date.today().replace(day=1))
-            d2 = st.date_input("اختتام", date.today())
-            t_list = ["تمام"] + [t[0] for t in c.execute("SELECT DISTINCT t_name FROM hifz_records").fetchall()]
-            sel_t = st.selectbox("استاد/کلاس", t_list)
-            s_list = ["تمام"] + [s[0] for s in c.execute("SELECT DISTINCT s_name FROM hifz_records").fetchall()]
-            sel_s = st.selectbox("طالب علم", s_list)
-
-        query = "SELECT * FROM hifz_records WHERE r_date BETWEEN ? AND ?"
-        params = [d1, d2]
-        if sel_t != "تمام": query += " AND t_name = ?"; params.append(sel_t)
-        if sel_s != "تمام": query += " AND s_name = ?"; params.append(sel_s)
+    elif choice == "📜 یومیہ تعلیمی رپورٹ":
+        st.header("📊 تعلیمی رپورٹس")
+        t1, t2 = st.tabs(["آج کا ریکارڈ", "انفرادی تعلیمی خلاصہ"])
         
-        df = pd.read_sql_query(query, conn, params=params)
-
-        if df.empty:
-            st.warning("منتخب کردہ فلٹرز کے مطابق کوئی ریکارڈ نہیں ملا۔")
-        else:
-            st.subheader("💡 خلاصہ (Summary)")
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("کل ریکارڈ", len(df))
-            m2.metric("حاضر طلباء", len(df[df['attendance'] == 'حاضر']))
-            m3.metric("اوسط سبقی غلطی", round(df['sq_m'].mean(), 1))
-            m4.metric("اوسط منزل غلطی", round(df['m_m'].mean(), 1))
-
-            st.subheader("🛠️ ڈیٹا کنٹرول (تبدیلی اور حذف)")
-            edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, hide_index=True)
-
-            if st.button("💾 تمام تبدیلیاں مستقل محفوظ کریں"):
-                try:
-                    c.execute(f"DELETE FROM hifz_records WHERE r_date BETWEEN '{d1}' AND '{d2}'" + 
-                              (f" AND t_name='{sel_t}'" if sel_t != "تمام" else "") + 
-                              (f" AND s_name='{sel_s}'" if sel_s != "تمام" else ""))
-                    edited_df.to_sql('hifz_records', conn, if_exists='append', index=False)
-                    st.success("✅ ڈیٹا کامیابی سے اپ ڈیٹ ہو گیا!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"ایرر: {e}")
+        with t1:
+            d = st.date_input("تاریخ منتخب کریں", date.today(), key="rep_date")
+            data = pd.read_sql_query(f"SELECT s_name, f_name, attendance, sabq, sabqi, manzil FROM hifz_records WHERE r_date='{d}'", conn)
+            st.dataframe(data, use_container_width=True)
+            
+        with t2:
+            all_s = c.execute("SELECT name, father_name FROM students").fetchall()
+            s_names = [f"{x[0]} ولد {x[1]}" for x in all_s]
+            sel = st.selectbox("طالب علم منتخب کریں", s_names)
+            sn, fn = sel.split(" ولد ")
+            
+            st.markdown(f"### 🎓 {sel} کا امتحانی ریکارڈ")
+            ex_data = pd.read_sql_query(f"SELECT para_no as پارہ, start_date as آغاز, end_date as اختتام, total as نمبر, grade as درجہ FROM exams WHERE s_name='{sn}' AND f_name='{fn}' AND status='مکمل'", conn)
+            st.table(ex_data)
 
     elif m == "📜 ماہانہ رزلٹ کارڈ":
         st.header("📜 ماہانہ رزلٹ کارڈ")
@@ -457,6 +433,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
