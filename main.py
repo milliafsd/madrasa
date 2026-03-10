@@ -341,9 +341,8 @@ else:
 
         if not students:
             st.info("آپ کی کلاس میں کوئی طالب علم رجسٹرڈ نہیں ہے۔")
-        else:
-                            for s, f in students:
-        with st.expander(f"👤 {s} ولد {f}"):
+        else:for s, f in students:
+            with st.expander(f"👤 {s} ولد {f}"):
                         att = st.radio(f"حاضری {s}", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{s}", horizontal=True)
                         
                         if att == "حاضر":
@@ -504,6 +503,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
