@@ -188,8 +188,7 @@ else:
                             <td style="padding: 8px; border: 1px solid #ddd;">{row['attendance']}</td>
                         </tr>
                     """
-                    
-          html_code += """
+                    html_code += """
                     </table>
                     
                     <div style="margin-top: 60px; display: flex; justify-content: space-between;">
@@ -488,6 +487,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
