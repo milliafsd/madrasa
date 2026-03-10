@@ -556,7 +556,7 @@ else:
         students = c.execute("SELECT s_name, f_name FROM students").fetchall()
     except sqlite3.OperationalError:
         st.error("❌ ڈیٹا بیس میں کالم 's_name' یا 'f_name' نہیں مل رہا۔")
-    return
+        return
     if not students:
         st.warning("⚠️ ابھی تک کوئی طالب علم درج نہیں ہے۔")
         return
@@ -646,6 +646,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
