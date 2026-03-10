@@ -332,7 +332,7 @@ else:
         else: st.info("حاضری کا کوئی ریکارڈ موجود نہیں ہے۔")
 
     # ================= TEACHER SECTION =================
-        elif m == "📝 تعلیمی اندراج":
+    elif m == "📝 تعلیمی اندراج":
         st.header("🚀 اسمارٹ تعلیمی ڈیش بورڈ")
         sel_date = st.date_input("تاریخ منتخب کریں", date.today())
         
@@ -495,6 +495,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
