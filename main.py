@@ -200,13 +200,16 @@ else:
             
         with t2:
             all_s = c.execute("SELECT name, father_name FROM students").fetchall()
-            s_names = [f"{x[0]} ولد {x[1]}" for x in all_s]
-            sel = st.selectbox("طالب علم منتخب کریں", s_names)
-            sn, fn = sel.split(" ولد ")
-            
-            st.markdown(f"### 🎓 {sel} کا امتحانی ریکارڈ")
-            ex_data = pd.read_sql_query(f"SELECT para_no as پارہ, start_date as آغاز, end_date as اختتام, total as نمبر, grade as درجہ FROM exams WHERE s_name='{sn}' AND f_name='{fn}' AND status='مکمل'", conn)
-            st.table(ex_data)
+            if all_s:
+                s_names = [f"{x[0]} ولد {x[1]}" for x in all_s]
+                sel = st.selectbox("طالب علم منتخب کریں", s_names, key="sel_student_rep")
+                sn, fn = sel.split(" ولد ")
+                
+                st.markdown(f"### 🎓 {sel} کا امتحانی ریکارڈ")
+                ex_data = pd.read_sql_query(f"SELECT para_no as پارہ, start_date as آغاز, end_date as اختتام, total as نمبر, grade as درجہ FROM exams WHERE s_name='{sn}' AND f_name='{fn}' AND status='مکمل'", conn)
+                st.table(ex_data)
+            else:
+                st.info("کوئی طالب علم موجود نہیں ہے۔")
 
     elif m == "📜 ماہانہ رزلٹ کارڈ":
         st.header("📜 ماہانہ رزلٹ کارڈ")
@@ -434,6 +437,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
