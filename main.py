@@ -59,6 +59,49 @@ def get_base64(file):
 @st.cache_data
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8-sig')
+def render_exam_report():
+    st.subheader("🎓 امتحانی تعلیمی رپورٹ")
+    
+    # طلباء کی لسٹ حاصل کرنا
+    students = c.execute("SELECT name, father FROM students").fetchall()
+    if not students:
+        st.warning("پہلے طالب علم کا اندراج کریں!")
+        return
+
+    student_list = [f"{s[0]} ولد {s[1]}" for s in students]
+    selected_s = st.selectbox("طالب علم منتخب کریں", student_list)
+    s_name, f_name = selected_s.split(" ولد ")
+    
+    col1, col2, col3 = st.columns(3)
+    para = col1.number_input("پارہ نمبر", 1, 30)
+    s_date = col2.date_input("آغازِ پارہ")
+    e_date = col3.date_input("اختتامِ پارہ")
+    
+    st.markdown("### 🖋️ ممتحن (مہتمم صاحب) کے نمبرات")
+    q_cols = st.columns(5)
+    q1 = q_cols[0].number_input("س 1", 0, 20)
+    q2 = q_cols[1].number_input("س 2", 0, 20)
+    q3 = q_cols[2].number_input("س 3", 0, 20)
+    q4 = q_cols[3].number_input("س 4", 0, 20)
+    q5 = q_cols[4].number_input("س 5", 0, 20)
+    
+    total = q1 + q2 + q3 + q4 + q5
+    
+    # گریڈ اور اسٹیٹس کی لاجک
+    if total >= 90: grade, status = "ممتاز", "کامیاب"
+    elif total >= 80: grade, status = "جید جداً", "کامیاب"
+    elif total >= 70: grade, status = "جید", "کامیاب"
+    elif total >= 60: grade, status = "مقبول", "کامیاب"
+    else: grade, status = "دوبارہ کوشش کریں", "ناکام"
+
+    st.info(f"کل نمبر: {total} | گریڈ: {grade} | کیفیت: {status}")
+
+    if st.button("امتحانی ریکارڈ محفوظ کریں"):
+        c.execute("""INSERT INTO exams (s_name, f_name, para_no, start_date, end_date, total, grade, status) 
+                     VALUES (?,?,?,?,?,?,?,?)""", 
+                  (s_name, f_name, para, str(s_date), str(e_date), total, grade, status))
+        conn.commit()
+        st.success(f"✅ {s_name} کا رزلٹ محفوظ ہو گیا!")
 
 # --- 2. اسٹائلنگ ---
 st.set_page_config(page_title="جامعہ ملیہ اسلامیہ پورٹل", layout="wide")
@@ -96,7 +139,7 @@ if not st.session_state.logged_in:
 else:
     # مینو کی ترتیب
     if st.session_state.user_type == "admin":
-        menu = ["📊 یومیہ تعلیمی رپورٹ", "📜 ماہانہ رزلٹ کارڈ", "🕒 اساتذہ کا ریکارڈ", "🏛️ مہتمم پینل (رخصت)", "⚙️ انتظامی کنٹرول"]
+        menu = ["📊 یومیہ تعلیمی رپورٹ", "🎓 امتحانی تعلیمی رپورٹ", "📜 ماہانہ رزلٹ کارڈ", "🕒 اساتذہ کا ریکارڈ", "🏛️ مہتمم پینل (رخصت)", "⚙️ انتظامی کنٹرول"]
     else:
         menu = ["📝 تعلیمی اندراج", "🎓 امتحانی تعلیمی رپورٹ", "درخواستِ رخصت", "🕒 میری حاضری"]
         
@@ -508,6 +551,7 @@ else:
             st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
 
     elif m == "🎓 امتحانی تعلیمی رپورٹ":
+        render_exam_report()  #
         st.header("🎓 امتحانی تعلیمی رپورٹ (حفظِ قرآن)")
     
     tab1, tab2 = st.tabs(["📝 نیا امتحان", "📜 رزلٹ کارڈز"])
@@ -594,6 +638,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
