@@ -187,8 +187,6 @@ else:
         
     m = st.sidebar.radio("📌 مینو منتخب کریں", menu)
 
-    # ================= ADMIN SECTION =================
-   
     elif m == "📜 ماہانہ رزلٹ کارڈ":
         st.header("📜 ماہانہ رزلٹ کارڈ")
         s_list = [s[0] for s in c.execute("SELECT DISTINCT name FROM students").fetchall()]
@@ -415,6 +413,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
