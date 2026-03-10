@@ -47,7 +47,7 @@ for t, col, typ in cols:
         except: pass
 
 c.execute("INSERT OR IGNORE INTO teachers (name, password) VALUES (?,?)", ("admin", "jamia123"))
-    conn.commit()
+conn.commit()
 
 init_db()
 
@@ -594,6 +594,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
