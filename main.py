@@ -42,7 +42,7 @@ cols = [
             ("teachers", "id_card", "TEXT"), ("teachers", "photo", "TEXT"), 
             ("leave_requests", "l_type", "TEXT"), ("leave_requests", "days", "INTEGER"), 
             ("leave_requests", "notification_seen", "INTEGER DEFAULT 0")]
-    for t, col, typ in cols:
+for t, col, typ in cols:
         try: c.execute(f"ALTER TABLE {t} ADD COLUMN {col} {typ}")
         except: pass
 
@@ -594,6 +594,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
