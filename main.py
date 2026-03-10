@@ -549,8 +549,7 @@ else:
             c.execute("UPDATE t_attendance SET departure=? WHERE t_name=? AND a_date=?", (dt, st.session_state.username, date.today()))
             conn.commit()
             st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
-
-     def render_exam_report():
+def render_exam_report():
     st.subheader("🎓 امتحانی تعلیمی رپورٹ")
     
     # درست کالم کے ناموں کے ساتھ ڈیٹا حاصل کرنا
@@ -649,6 +648,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
