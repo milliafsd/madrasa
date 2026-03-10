@@ -89,7 +89,7 @@ else:
     m = st.sidebar.radio("📌 مینو منتخب کریں", menu)
 
     # ================= ADMIN SECTION =================
-elif m == "📊 تعلیمی رپورٹ":
+        elif m == "📊 تعلیمی رپورٹ":
         st.markdown("<h2 style='text-align: center; color: #1e5631;'>📊 ماسٹر تعلیمی رپورٹ و تجزیہ</h2>", unsafe_allow_html=True)
 
         # --- فلٹرز (Filters) ---
@@ -504,6 +504,7 @@ elif m == "📊 تعلیمی رپورٹ":
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
 
