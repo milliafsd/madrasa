@@ -507,8 +507,8 @@ else:
             conn.commit()
             st.warning(f"رخصتی کا وقت ریکارڈ ہو گیا: {dt}")
 
-  elif m == "🎓 امتحانی تعلیمی رپورٹ":
-    st.header("🎓 امتحانی تعلیمی رپورٹ (حفظِ قرآن)")
+    elif m == "🎓 امتحانی تعلیمی رپورٹ":
+        st.header("🎓 امتحانی تعلیمی رپورٹ (حفظِ قرآن)")
     
     tab1, tab2 = st.tabs(["📝 نیا امتحان", "📜 رزلٹ کارڈز"])
     
@@ -594,6 +594,7 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun() 
+
 
 
 
