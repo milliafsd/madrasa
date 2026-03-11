@@ -298,6 +298,16 @@ else:
         st.header("🕒 حاضری ریکارڈ")
         att_df = pd.read_sql_query("SELECT a_date as تاریخ, t_name as استاد, arrival as آمد, departure as رخصت FROM t_attendance", conn)
         if not att_df.empty: st.dataframe(att_df, use_container_width=True)
+            # --- نیا فیچر: اساتذہ کے نام اور پاسورڈ میں ترمیم ---
+        with t3:
+            st.subheader("اساتذہ کا ڈیٹا ایڈٹ کریں")
+            tech_df = pd.read_sql_query("SELECT id, name, password FROM teachers WHERE name != 'admin'", conn)
+            edited_tech = st.data_editor(tech_df, hide_index=True, use_container_width=True)
+            if st.button("پاسورڈ اور نام محفوظ کریں"):
+                for index, row in edited_tech.iterrows():
+                    c.execute("UPDATE teachers SET name=?, password=? WHERE id=?", (row['name'], row['password'], row['id']))
+                conn.commit()
+                st.success("تبدیلیاں محفوظ ہو گئیں۔")
 
     # ================= TEACHER SECTION (اصل مکمل کوڈ) =================
     elif m == "📝 تعلیمی اندراج":
@@ -457,5 +467,6 @@ else:
     if st.sidebar.button("🚪 لاگ آؤٹ کریں"):
         st.session_state.logged_in = False
         st.rerun()
+
 
 
