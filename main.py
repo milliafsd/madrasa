@@ -44,7 +44,7 @@ def validate_id_card(id_card: str) -> bool:
     return bool(re.match(pattern, id_card))
 
 # ==================== 2. ڈیٹا بیس سیٹ اپ ====================
-DB_NAME = 'jamia_millia_data.db'
+DB_NAME = 'jamia_millia_v1.db'
 
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
