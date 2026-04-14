@@ -27,7 +27,7 @@ st.set_page_config(
 # ═══════════════════════════════════════════════════════
 # DATABASE
 # ═══════════════════════════════════════════════════════
-DB = "jamia_millia_data.db"
+DB = "jamia_v3.db"
 
 @st.cache_resource
 def get_db_connection():
