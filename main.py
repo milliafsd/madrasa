@@ -1,2444 +1,2199 @@
+# -*- coding: utf-8 -*-
 """
-جامعہ ملیہ اسلامیہ فیصل آباد — Smart ERP v5.0
-Fixed: Icons, Errors, Student Grid, Admin Controls
+جامعہ ملیہ اسلامیہ فیصل آباد | سمارٹ ERP
+حصہ 1: امپورٹس، ڈیٹا بیس سیٹ اپ (SQLite)، اور ہیلپر فنکشنز
 """
 
-# ─────────────────────────────────────────
-# STEP 1: PAGE CONFIG (must be first)
-# ─────────────────────────────────────────
 import streamlit as st
-st.set_page_config(
-    page_title="جامعہ ملیہ ERP",
-    page_icon="🕌",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# ─────────────────────────────────────────
-# STEP 2: IMPORTS
-# ─────────────────────────────────────────
-import sqlite3
-import hashlib
-import os
-import io
-import zipfile
-import shutil
 import pandas as pd
 from datetime import datetime, date, timedelta
+import sqlite3
+import pytz
+import plotly.express as px
+import os
+import hashlib
+import shutil
+import zipfile
+import io
 
-# ─────────────────────────────────────────
-# STEP 3: DATABASE
-# ─────────────────────────────────────────
-DB = "jamia_data.db"
+# ==================== ڈیٹا بیس سیٹ اپ (SQLite) ====================
+DB_NAME = 'jamia_millia_data.db'
 
+def get_db_connection():
+    """SQLite ڈیٹا بیس کنکشن واپس کرتا ہے"""
+    return sqlite3.connect(DB_NAME, check_same_thread=False)
 
-def get_conn():
-    conn = sqlite3.connect(DB, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+def hash_password(password):
+    """پاسورڈ کو SHA256 ہیش میں تبدیل کرتا ہے"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
+def column_exists(table, column):
+    """چیک کرتا ہے کہ آیا ٹیبل میں کوئی کالم موجود ہے"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute(f"PRAGMA table_info({table})")
+    columns = [row[1] for row in c.fetchall()]
+    conn.close()
+    return column in columns
 
-def execute(sql, params=()):
-    """Run write query, return lastrowid"""
-    with get_conn() as c:
-        cur = c.execute(sql, params)
-        c.commit()
-        return cur.lastrowid
-
-
-def query(sql, params=(), one=False):
-    """Run read query, return list of dicts"""
-    try:
-        with get_conn() as c:
-            rows = [dict(r) for r in c.execute(sql, params).fetchall()]
-        if one:
-            return rows[0] if rows else None
-        return rows
-    except Exception as e:
-        return None if one else []
-
-
-def scalar(sql, params=()):
-    """Return single value"""
-    try:
-        with get_conn() as c:
-            r = c.execute(sql, params).fetchone()
-        return r[0] if r else 0
-    except:
-        return 0
-
-
-def table_has_col(table, col):
-    rows = query(f"PRAGMA table_info({table})")
-    return any(r.get("name") == col for r in rows)
-
-
-def safe_add_col(table, col, typ):
-    if not table_has_col(table, col):
+def add_column_if_not_exists(table, column, col_type):
+    """اگر کالم موجود نہ ہو تو اسے ٹیبل میں شامل کرتا ہے"""
+    if not column_exists(table, column):
+        conn = get_db_connection()
+        c = conn.cursor()
         try:
-            execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            conn.commit()
         except:
             pass
-
+        conn.close()
 
 def init_db():
-    """Create all tables"""
-    execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        username     TEXT UNIQUE NOT NULL,
-        password     TEXT NOT NULL,
-        role         TEXT DEFAULT 'teacher',
-        dept         TEXT DEFAULT '',
-        phone        TEXT DEFAULT '',
-        id_card      TEXT DEFAULT '',
-        joining_date TEXT DEFAULT '',
-        is_active    INTEGER DEFAULT 1,
-        created_at   TEXT DEFAULT (datetime('now','localtime'))
-    )""")
+    """تمام ٹیبلز بناتا ہے اور ابتدائی ڈیٹا ڈالتا ہے"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    
+    # teachers ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS teachers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE,
+        password TEXT
+    )''')
+    add_column_if_not_exists('teachers', 'dept', 'TEXT')
+    add_column_if_not_exists('teachers', 'phone', 'TEXT')
+    add_column_if_not_exists('teachers', 'address', 'TEXT')
+    add_column_if_not_exists('teachers', 'id_card', 'TEXT')
+    add_column_if_not_exists('teachers', 'photo', 'TEXT')
+    add_column_if_not_exists('teachers', 'joining_date', 'DATE')
+    
+    # students ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        father_name TEXT,
+        mother_name TEXT,
+        dob DATE,
+        admission_date DATE,
+        exit_date DATE,
+        exit_reason TEXT,
+        id_card TEXT,
+        photo TEXT,
+        phone TEXT,
+        address TEXT,
+        teacher_name TEXT,
+        dept TEXT,
+        class TEXT,
+        section TEXT,
+        roll_no TEXT
+    )''')
+    add_column_if_not_exists('students', 'roll_no', 'TEXT')
+    
+    # hifz_records ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS hifz_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        r_date DATE,
+        student_id INTEGER,
+        t_name TEXT,
+        surah TEXT,
+        a_from TEXT,
+        a_to TEXT,
+        sq_p TEXT,
+        sq_a INTEGER,
+        sq_m INTEGER,
+        m_p TEXT,
+        m_a INTEGER,
+        m_m INTEGER,
+        attendance TEXT,
+        principal_note TEXT,
+        lines INTEGER,
+        cleanliness TEXT,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+    )''')
+    add_column_if_not_exists('hifz_records', 'student_id', 'INTEGER')
+    add_column_if_not_exists('hifz_records', 'lines', 'INTEGER')
+    add_column_if_not_exists('hifz_records', 'cleanliness', 'TEXT')
+    
+    # qaida_records ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS qaida_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        r_date DATE,
+        student_id INTEGER,
+        t_name TEXT,
+        lesson_no TEXT,
+        total_lines INTEGER,
+        details TEXT,
+        attendance TEXT,
+        principal_note TEXT,
+        cleanliness TEXT,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+    )''')
+    add_column_if_not_exists('qaida_records', 'student_id', 'INTEGER')
+    add_column_if_not_exists('qaida_records', 'cleanliness', 'TEXT')
+    
+    # general_education ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS general_education (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        r_date DATE,
+        student_id INTEGER,
+        t_name TEXT,
+        dept TEXT,
+        book_subject TEXT,
+        today_lesson TEXT,
+        homework TEXT,
+        performance TEXT,
+        attendance TEXT,
+        cleanliness TEXT,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+    )''')
+    add_column_if_not_exists('general_education', 'student_id', 'INTEGER')
+    add_column_if_not_exists('general_education', 'attendance', 'TEXT')
+    add_column_if_not_exists('general_education', 'cleanliness', 'TEXT')
+    
+    # t_attendance ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS t_attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        t_name TEXT,
+        a_date DATE,
+        arrival TEXT,
+        departure TEXT,
+        actual_arrival TEXT,
+        actual_departure TEXT
+    )''')
+    
+    # leave_requests ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS leave_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        t_name TEXT,
+        reason TEXT,
+        start_date DATE,
+        back_date DATE,
+        status TEXT,
+        request_date DATE,
+        l_type TEXT,
+        days INTEGER,
+        notification_seen INTEGER DEFAULT 0
+    )''')
+    
+    # exams ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS exams (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER,
+        dept TEXT,
+        exam_type TEXT,
+        from_para INTEGER,
+        to_para INTEGER,
+        book_name TEXT,
+        amount_read TEXT,
+        start_date TEXT,
+        end_date TEXT,
+        total_days INTEGER,
+        q1 INTEGER,
+        q2 INTEGER,
+        q3 INTEGER,
+        q4 INTEGER,
+        q5 INTEGER,
+        total INTEGER,
+        grade TEXT,
+        status TEXT,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+    )''')
+    add_column_if_not_exists('exams', 'student_id', 'INTEGER')
+    add_column_if_not_exists('exams', 'amount_read', 'TEXT')
+    add_column_if_not_exists('exams', 'total_days', 'INTEGER')
+    
+    # passed_paras ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS passed_paras (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER,
+        para_no INTEGER,
+        book_name TEXT,
+        passed_date DATE,
+        exam_type TEXT,
+        grade TEXT,
+        marks INTEGER,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+    )''')
+    add_column_if_not_exists('passed_paras', 'student_id', 'INTEGER')
+    add_column_if_not_exists('passed_paras', 'book_name', 'TEXT')
+    add_column_if_not_exists('passed_paras', 'marks', 'INTEGER')
+    
+    # timetable ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS timetable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        t_name TEXT,
+        day TEXT,
+        period TEXT,
+        book TEXT,
+        room TEXT
+    )''')
+    
+    # notifications ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        message TEXT,
+        target TEXT,
+        created_at DATETIME,
+        seen INTEGER DEFAULT 0
+    )''')
+    
+    # audit_log ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user TEXT,
+        action TEXT,
+        timestamp DATETIME,
+        details TEXT
+    )''')
+    
+    # staff_monitoring ٹیبل
+    c.execute('''CREATE TABLE IF NOT EXISTS staff_monitoring (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        staff_name TEXT,
+        date DATE,
+        note_type TEXT,
+        description TEXT,
+        action_taken TEXT,
+        status TEXT,
+        created_by TEXT,
+        created_at DATETIME
+    )''')
+    
+    conn.commit()
+    
+    # مائیگریشن: پرانے ریکارڈز میں student_id شامل کریں
+    if column_exists('hifz_records', 's_name') and column_exists('hifz_records', 'f_name'):
+        c.execute("SELECT id, s_name, f_name FROM hifz_records WHERE student_id IS NULL")
+        old_records = c.fetchall()
+        for rec_id, s_name, f_name in old_records:
+            student = c.execute("SELECT id FROM students WHERE name=? AND father_name=?", (s_name, f_name)).fetchone()
+            if student:
+                c.execute("UPDATE hifz_records SET student_id=? WHERE id=?", (student[0], rec_id))
+            else:
+                c.execute("INSERT INTO students (name, father_name) VALUES (?,?)", (s_name, f_name))
+                new_id = c.lastrowid
+                c.execute("UPDATE hifz_records SET student_id=? WHERE id=?", (new_id, rec_id))
+        conn.commit()
+    
+    if column_exists('qaida_records', 's_name') and column_exists('qaida_records', 'f_name'):
+        c.execute("SELECT id, s_name, f_name FROM qaida_records WHERE student_id IS NULL")
+        old_records = c.fetchall()
+        for rec_id, s_name, f_name in old_records:
+            student = c.execute("SELECT id FROM students WHERE name=? AND father_name=?", (s_name, f_name)).fetchone()
+            if student:
+                c.execute("UPDATE qaida_records SET student_id=? WHERE id=?", (student[0], rec_id))
+            else:
+                c.execute("INSERT INTO students (name, father_name) VALUES (?,?)", (s_name, f_name))
+                new_id = c.lastrowid
+                c.execute("UPDATE qaida_records SET student_id=? WHERE id=?", (new_id, rec_id))
+        conn.commit()
+    
+    if column_exists('general_education', 's_name') and column_exists('general_education', 'f_name'):
+        c.execute("SELECT id, s_name, f_name FROM general_education WHERE student_id IS NULL")
+        old_records = c.fetchall()
+        for rec_id, s_name, f_name in old_records:
+            student = c.execute("SELECT id FROM students WHERE name=? AND father_name=?", (s_name, f_name)).fetchone()
+            if student:
+                c.execute("UPDATE general_education SET student_id=? WHERE id=?", (student[0], rec_id))
+            else:
+                c.execute("INSERT INTO students (name, father_name) VALUES (?,?)", (s_name, f_name))
+                new_id = c.lastrowid
+                c.execute("UPDATE general_education SET student_id=? WHERE id=?", (new_id, rec_id))
+        conn.commit()
+    
+    if column_exists('exams', 's_name') and column_exists('exams', 'f_name'):
+        c.execute("SELECT id, s_name, f_name FROM exams WHERE student_id IS NULL")
+        old_records = c.fetchall()
+        for rec_id, s_name, f_name in old_records:
+            student = c.execute("SELECT id FROM students WHERE name=? AND father_name=?", (s_name, f_name)).fetchone()
+            if student:
+                c.execute("UPDATE exams SET student_id=? WHERE id=?", (student[0], rec_id))
+            else:
+                c.execute("INSERT INTO students (name, father_name) VALUES (?,?)", (s_name, f_name))
+                new_id = c.lastrowid
+                c.execute("UPDATE exams SET student_id=? WHERE id=?", (new_id, rec_id))
+        conn.commit()
+    
+    if column_exists('passed_paras', 's_name') and column_exists('passed_paras', 'f_name'):
+        c.execute("SELECT id, s_name, f_name FROM passed_paras WHERE student_id IS NULL")
+        old_records = c.fetchall()
+        for rec_id, s_name, f_name in old_records:
+            student = c.execute("SELECT id FROM students WHERE name=? AND father_name=?", (s_name, f_name)).fetchone()
+            if student:
+                c.execute("UPDATE passed_paras SET student_id=? WHERE id=?", (student[0], rec_id))
+            else:
+                c.execute("INSERT INTO students (name, father_name) VALUES (?,?)", (s_name, f_name))
+                new_id = c.lastrowid
+                c.execute("UPDATE passed_paras SET student_id=? WHERE id=?", (new_id, rec_id))
+        conn.commit()
+    
+    # ایڈمن یوزر بنائیں اگر موجود نہ ہو
+    admin_hash = hash_password("jamia123")
+    admin_exists = c.execute("SELECT 1 FROM teachers WHERE name='admin'").fetchone()
+    if not admin_exists:
+        c.execute("INSERT INTO teachers (name, password, dept) VALUES (?,?,?)", ("admin", admin_hash, "Admin"))
+    conn.commit()
+    conn.close()
 
-    execute("""
-    CREATE TABLE IF NOT EXISTS students (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        name           TEXT NOT NULL,
-        father_name    TEXT NOT NULL,
-        mother_name    TEXT DEFAULT '',
-        roll_no        TEXT DEFAULT '',
-        dob            TEXT DEFAULT '',
-        admission_date TEXT DEFAULT '',
-        phone          TEXT DEFAULT '',
-        address        TEXT DEFAULT '',
-        teacher        TEXT DEFAULT '',
-        dept           TEXT DEFAULT '',
-        class_name     TEXT DEFAULT '',
-        section        TEXT DEFAULT '',
-        is_active      INTEGER DEFAULT 1,
-        created_at     TEXT DEFAULT (datetime('now','localtime'))
-    )""")
+# ڈیٹا بیس شروع کریں
+init_db()
 
-    execute("""
-    CREATE TABLE IF NOT EXISTS hifz_records (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        rec_date       TEXT NOT NULL,
-        student_id     INTEGER NOT NULL,
-        teacher        TEXT NOT NULL,
-        attendance     TEXT DEFAULT 'حاضر',
-        sabaq          TEXT DEFAULT '',
-        sabaq_lines    INTEGER DEFAULT 0,
-        sabaq_nagha    INTEGER DEFAULT 0,
-        sq_text        TEXT DEFAULT '',
-        sq_nagha       INTEGER DEFAULT 0,
-        sq_atkan       INTEGER DEFAULT 0,
-        sq_mistakes    INTEGER DEFAULT 0,
-        manzil_text    TEXT DEFAULT '',
-        manzil_nagha   INTEGER DEFAULT 0,
-        manzil_atkan   INTEGER DEFAULT 0,
-        manzil_mistakes INTEGER DEFAULT 0,
-        cleanliness    TEXT DEFAULT '',
-        grade          TEXT DEFAULT '',
-        note           TEXT DEFAULT '',
-        created_at     TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS qaida_records (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        rec_date    TEXT NOT NULL,
-        student_id  INTEGER NOT NULL,
-        teacher     TEXT NOT NULL,
-        attendance  TEXT DEFAULT 'حاضر',
-        lesson_no   TEXT DEFAULT '',
-        total_lines INTEGER DEFAULT 0,
-        details     TEXT DEFAULT '',
-        cleanliness TEXT DEFAULT '',
-        note        TEXT DEFAULT '',
-        created_at  TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS general_records (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        rec_date    TEXT NOT NULL,
-        student_id  INTEGER NOT NULL,
-        teacher     TEXT NOT NULL,
-        dept        TEXT DEFAULT '',
-        attendance  TEXT DEFAULT 'حاضر',
-        subject     TEXT DEFAULT '',
-        lesson      TEXT DEFAULT '',
-        homework    TEXT DEFAULT '',
-        performance TEXT DEFAULT '',
-        cleanliness TEXT DEFAULT '',
-        note        TEXT DEFAULT '',
-        created_at  TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS teacher_attendance (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        username   TEXT NOT NULL,
-        att_date   TEXT NOT NULL,
-        arrival    TEXT DEFAULT '',
-        departure  TEXT DEFAULT '',
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        UNIQUE(username, att_date)
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS leave_requests (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        username   TEXT NOT NULL,
-        leave_type TEXT DEFAULT '',
-        start_date TEXT DEFAULT '',
-        days       INTEGER DEFAULT 1,
-        reason     TEXT DEFAULT '',
-        status     TEXT DEFAULT 'پینڈنگ',
-        created_at TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS exams (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_id  INTEGER NOT NULL,
-        teacher     TEXT DEFAULT '',
-        dept        TEXT DEFAULT '',
-        exam_type   TEXT DEFAULT '',
-        from_para   INTEGER DEFAULT 0,
-        to_para     INTEGER DEFAULT 0,
-        book_name   TEXT DEFAULT '',
-        amount_read TEXT DEFAULT '',
-        start_date  TEXT DEFAULT '',
-        end_date    TEXT DEFAULT '',
-        total_days  INTEGER DEFAULT 0,
-        q1 INTEGER DEFAULT 0, q2 INTEGER DEFAULT 0,
-        q3 INTEGER DEFAULT 0, q4 INTEGER DEFAULT 0, q5 INTEGER DEFAULT 0,
-        total       INTEGER DEFAULT 0,
-        grade       TEXT DEFAULT '',
-        status      TEXT DEFAULT 'پینڈنگ',
-        created_at  TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS passed_paras (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_id  INTEGER NOT NULL,
-        para_no     INTEGER DEFAULT 0,
-        book_name   TEXT DEFAULT '',
-        passed_date TEXT DEFAULT '',
-        exam_type   TEXT DEFAULT '',
-        grade       TEXT DEFAULT '',
-        marks       INTEGER DEFAULT 0
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS timetable (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        teacher  TEXT NOT NULL,
-        day_name TEXT DEFAULT '',
-        period   TEXT DEFAULT '',
-        subject  TEXT DEFAULT '',
-        room     TEXT DEFAULT ''
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS notifications (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        title      TEXT NOT NULL,
-        message    TEXT DEFAULT '',
-        target     TEXT DEFAULT 'تمام',
-        created_by TEXT DEFAULT '',
-        created_at TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS staff_notes (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        staff        TEXT NOT NULL,
-        note_date    TEXT DEFAULT '',
-        note_type    TEXT DEFAULT '',
-        description  TEXT DEFAULT '',
-        action_taken TEXT DEFAULT '',
-        status       TEXT DEFAULT 'زیر التواء',
-        created_by   TEXT DEFAULT '',
-        created_at   TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    execute("""
-    CREATE TABLE IF NOT EXISTS audit_log (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        username   TEXT DEFAULT '',
-        action     TEXT DEFAULT '',
-        details    TEXT DEFAULT '',
-        created_at TEXT DEFAULT (datetime('now','localtime'))
-    )""")
-
-    # Default admin
-    if not query("SELECT id FROM users WHERE username='admin'", one=True):
-        execute(
-            "INSERT INTO users(username,password,role,dept) VALUES(?,?,?,?)",
-            ("admin", make_hash("jamia123"), "admin", "انتظامیہ")
-        )
-
-
-# ─────────────────────────────────────────
-# STEP 4: SECURITY
-# ─────────────────────────────────────────
-def make_hash(pw):
-    return hashlib.sha256(pw.encode("utf-8")).hexdigest()
-
-
-def verify_password(plain, stored):
-    if not plain or not stored:
-        return False
-    # New hash format
-    if make_hash(plain) == stored:
-        return True
-    # Old format (no utf-8 explicit)
-    if hashlib.sha256(plain.encode()).hexdigest() == stored:
-        return True
-    # Plain text legacy
-    if plain == stored:
-        return True
-    return False
-
-
-def log_action(user, action, detail=""):
+# ==================== ہیلپر فنکشنز ====================
+def log_audit(user, action, details=""):
+    """آڈٹ لاگ میں اندراج کرتا ہے"""
     try:
-        execute(
-            "INSERT INTO audit_log(username,action,details) VALUES(?,?,?)",
-            (user, action, str(detail)[:300])
-        )
+        conn = get_db_connection()
+        conn.execute("INSERT INTO audit_log (user, action, timestamp, details) VALUES (?,?,?,?)",
+                     (user, action, datetime.now(), details))
+        conn.commit()
+        conn.close()
     except:
         pass
 
+def get_pk_time():
+    """پاکستانی وقت (کراچی) واپس کرتا ہے"""
+    tz = pytz.timezone('Asia/Karachi')
+    return datetime.now(tz).strftime("%I:%M %p")
 
-# ─────────────────────────────────────────
-# STEP 5: GRADE LOGIC
-# ─────────────────────────────────────────
-def hifz_grade(att, sn, sqn, mn, sqm, mm):
-    if att == "غیر حاضر":
-        return "غیر حاضر"
-    if att == "رخصت":
-        return "رخصت"
-    nagha = int(bool(sn)) + int(bool(sqn)) + int(bool(mn))
-    if nagha == 1:
-        return "ناقص"
-    if nagha == 2:
-        return "کمزور"
-    if nagha >= 3:
-        return "ناکام"
-    total = int(sqm) + int(mm)
-    if total <= 2:
+def convert_df_to_csv(df):
+    """DataFrame کو CSV میں تبدیل کرتا ہے"""
+    return df.to_csv(index=False).encode('utf-8-sig')
+
+def get_grade_from_mistakes(total_mistakes):
+    """غلطیوں کی تعداد کی بنیاد پر گریڈ واپس کرتا ہے"""
+    if total_mistakes <= 2:
         return "ممتاز"
-    if total <= 5:
+    elif total_mistakes <= 5:
         return "جید جداً"
-    if total <= 8:
+    elif total_mistakes <= 8:
         return "جید"
-    if total <= 12:
+    elif total_mistakes <= 12:
         return "مقبول"
-    return "ناکام"
+    else:
+        return "دوبارہ کوشش کریں"
 
+def calculate_grade_with_attendance(attendance, sabaq_nagha, sq_nagha, m_nagha, sq_mistakes, m_mistakes):
+    """حاضری، ناغہ اور غلطیوں کی بنیاد پر گریڈ کا حساب لگاتا ہے"""
+    if attendance == "غیر حاضر":
+        return "غیر حاضر"
+    if attendance == "رخصت":
+        return "رخصت"
+    nagha_count = sum([sabaq_nagha, sq_nagha, m_nagha])
+    if nagha_count == 1:
+        return "ناقص (ناغہ)"
+    elif nagha_count == 2:
+        return "کمزور (ناغہ)"
+    elif nagha_count == 3:
+        return "ناکام (مکمل ناغہ)"
+    total_mistakes = sq_mistakes + m_mistakes
+    return get_grade_from_mistakes(total_mistakes)
 
-def exam_grade(total):
-    if total >= 90: return "ممتاز"
-    if total >= 80: return "جید جداً"
-    if total >= 70: return "جید"
-    if total >= 60: return "مقبول"
-    return "ناکام"
+def cleanliness_to_score(clean):
+    """صفائی کو عددی سکور میں تبدیل کرتا ہے"""
+    if clean == "بہترین":
+        return 3
+    elif clean == "بہتر":
+        return 2
+    elif clean == "ناقص":
+        return 1
+    else:
+        return 0
 
+def generate_exam_result_card(exam_row):
+    """امتحانی رزلٹ کارڈ کے لیے HTML تیار کرتا ہے"""
+    html = f"""
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head><meta charset="UTF-8"><title>رزلٹ کارڈ - {exam_row['s_name']}</title>
+    <style>
+        @font-face {{ font-family: 'Jameel Noori Nastaleeq'; src: url('https://fonts.cdnfonts.com/css/jameel-noori-nastaleeq'); }}
+        body {{ font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; margin: 20px; direction: rtl; text-align: right; }}
+        .card {{ border: 2px solid #1e5631; border-radius: 15px; padding: 20px; max-width: 600px; margin: auto; }}
+        h2 {{ text-align: center; color: #1e5631; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
+        th {{ background-color: #f2f2f2; }}
+        .footer {{ margin-top: 20px; display: flex; justify-content: space-between; }}
+    </style>
+    </head>
+    <body>
+        <div class="card">
+            <h2>جامعہ ملیہ اسلامیہ فیصل آباد</h2>
+            <h3>رزلٹ کارڈ</h3>
+            <p><b>نام:</b> {exam_row['s_name']} ولد {exam_row['f_name']}</p>
+            <p><b>شناختی نمبر:</b> {exam_row.get('roll_no', '')}</p>
+            <p><b>امتحان کی قسم:</b> {exam_row['exam_type']}</p>
+            {f"<p><b>پارہ:</b> {exam_row['from_para']} تا {exam_row['to_para']}</p>" if exam_row.get('from_para') else ""}
+            {f"<p><b>کتاب:</b> {exam_row.get('book_name', '')}</p>" if exam_row.get('book_name') else ""}
+            {f"<p><b>مقدار خواندگی:</b> {exam_row.get('amount_read', '')}</p>" if exam_row.get('amount_read') else ""}
+            <p><b>تاریخ:</b> {exam_row['start_date']} تا {exam_row['end_date']}</p>
+            <p><b>کل دن:</b> {exam_row.get('total_days', '')}</p>
+            <table>
+                <tr><th>سوال</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>کل</th></tr>
+                <tr><td style="text-align:center">{exam_row['q1']}</td>
+                <td>{exam_row['q2']}</td>
+                <td>{exam_row['q3']}</td>
+                <td>{exam_row['q4']}</td>
+                <td>{exam_row['q5']}</td>
+                <td>{exam_row['total']}</td>
+                </tr>
+            </table>
+            <p><b>گریڈ:</b> {exam_row['grade']}</p>
+            <div class="footer">
+                <span>دستخط استاذ: _________________</span>
+                <span>دستخط مہتمم: _________________</span>
+            </div>
+        </div>
+        <div class="no-print" style="text-align:center; margin-top:20px;">
+            <button onclick="window.print()">🖨️ پرنٹ کریں</button>
+        </div>
+    </body>
+    </html>
+    """
+    return html
 
-# ─────────────────────────────────────────
-# STEP 6: REPORT GENERATOR
-# ─────────────────────────────────────────
-def make_html_report(df, title, subtitle=""):
-    table_html = df.to_html(index=False, border=0, classes="rt", escape=False)
-    return f"""<!DOCTYPE html>
-<html dir="rtl" lang="ur">
-<head>
-<meta charset="UTF-8">
-<title>{title}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap');
-* {{ font-family: 'Noto Nastaliq Urdu', serif; direction: rtl; }}
-body {{ background: #f5f9f7; margin: 0; padding: 20px; }}
-.wrap {{ background: #fff; border-radius: 12px; padding: 24px;
-        max-width: 960px; margin: auto;
-        box-shadow: 0 4px 20px rgba(0,77,50,.10); }}
-h2 {{ text-align: center; color: #0a5c3c;
-     border-bottom: 3px solid #c9982a; padding-bottom: 12px; }}
-.sub {{ text-align: center; color: #555; margin-top: 4px; font-size: .9rem; }}
-table.rt {{ width: 100%; border-collapse: collapse; margin-top: 16px; }}
-table.rt th {{ background: #0a5c3c; color: #fff;
-               padding: 9px 12px; text-align: center; font-size: 14px; }}
-table.rt td {{ padding: 7px 12px; border-bottom: 1px solid #e8f0ec;
-               text-align: center; font-size: 13px; }}
-table.rt tr:nth-child(even) td {{ background: #f0f8f4; }}
-.sig {{ display: flex; justify-content: space-between;
-        margin-top: 48px; padding-top: 16px;
-        border-top: 1px solid #ddd; }}
-.pb {{ text-align: center; margin-top: 24px; }}
-.pb button {{ padding: 10px 32px; background: #0a5c3c; color: #fff;
-              border: none; border-radius: 8px; cursor: pointer;
-              font-size: 15px; font-family: inherit; }}
-@media print {{ .pb {{ display: none; }} }}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h2>🕌 جامعہ ملیہ اسلامیہ فیصل آباد</h2>
-  <p class="sub"><b>{title}</b>{" | " + subtitle if subtitle else ""}</p>
-  {table_html}
-  <div class="sig">
-    <span>دستخط استاذ: ___________________</span>
-    <span>دستخط مہتمم: ___________________</span>
-  </div>
-</div>
-<div class="pb">
-  <button onclick="window.print()">🖨️ پرنٹ کریں</button>
-</div>
-</body>
-</html>"""
+def generate_para_report(student_name, father_name, passed_paras_df):
+    """پارہ رپورٹ کے لیے HTML تیار کرتا ہے"""
+    if passed_paras_df.empty:
+        return "<p>کوئی پاس شدہ پارہ نہیں</p>"
+    html_table = passed_paras_df.to_html(index=False, classes='print-table', border=1, justify='center', escape=False)
+    html = f"""
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head><meta charset="UTF-8"><title>پارہ تعلیمی رپورٹ - {student_name}</title>
+    <style>
+        @font-face {{ font-family: 'Jameel Noori Nastaleeq'; src: url('https://fonts.cdnfonts.com/css/jameel-noori-nastaleeq'); }}
+        body {{ font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; margin: 20px; direction: rtl; text-align: right; }}
+        h2, h3 {{ text-align: center; color: #1e5631; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
+        th {{ background-color: #f2f2f2; }}
+        @media print {{ body {{ margin: 0; }} .no-print {{ display: none; }} }}
+    </style>
+    </head>
+    <body>
+        <div class="header">
+            <h2>جامعہ ملیہ اسلامیہ فیصل آباد</h2>
+            <h3>پارہ تعلیمی رپورٹ</h3>
+            <p><b>طالب علم:</b> {student_name} ولد {father_name}</p>
+        </div>
+        {html_table}
+        <div class="signatures" style="display:flex; justify-content:space-between; margin-top:50px;">
+            <span>دستخط استاذ: _______________________</span>
+            <span>دستخط مہتمم: _______________________</span>
+        </div>
+        <div class="no-print" style="text-align:center; margin-top:30px;">
+            <button onclick="window.print()">🖨️ پرنٹ کریں</button>
+        </div>
+    </body>
+    </html>
+    """
+    return html
 
+def generate_html_report(df, title, student_name="", start_date="", end_date="", passed_paras=None):
+    """جنرل رپورٹ کے لیے HTML تیار کرتا ہے"""
+    html_table = df.to_html(index=False, classes='print-table', border=1, justify='center', escape=False)
+    passed_html = ""
+    if passed_paras:
+        passed_html = f"<div style='margin-top:20px'><b>پاس شدہ پارے:</b> {', '.join(map(str, passed_paras))}</div>"
+    html = f"""
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head><meta charset="UTF-8"><title>{title}</title>
+    <style>
+        @font-face {{ font-family: 'Jameel Noori Nastaleeq'; src: url('https://fonts.cdnfonts.com/css/jameel-noori-nastaleeq'); }}
+        body {{ font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; margin: 20px; direction: rtl; text-align: right; }}
+        h2, h3 {{ text-align: center; color: #1e5631; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
+        th {{ background-color: #f2f2f2; }}
+        @media print {{ body {{ margin: 0; }} .no-print {{ display: none; }} }}
+    </style>
+    </head>
+    <body>
+        <div class="header">
+            <h2>جامعہ ملیہ اسلامیہ فیصل آباد</h2>
+            <h3>{title}</h3>
+            {f"<p><b>طالب علم:</b> {student_name} &nbsp;&nbsp; <b>تاریخ:</b> {start_date} تا {end_date}</p>" if student_name else ""}
+        </div>
+        {html_table}
+        {passed_html}
+        <div class="signatures" style="display:flex; justify-content:space-between; margin-top:50px;">
+            <span>دستخط استاذ: _______________________</span>
+            <span>دستخط مہتمم: _______________________</span>
+        </div>
+        <div class="no-print" style="text-align:center; margin-top:30px;">
+            <button onclick="window.print()">🖨️ پرنٹ کریں</button>
+        </div>
+    </body>
+    </html>
+    """
+    return html
 
-def df_csv(df):
-    return df.to_csv(index=False).encode("utf-8-sig")
+def generate_timetable_html(df_timetable):
+    """ٹائم ٹیبل کے لیے HTML تیار کرتا ہے"""
+    if df_timetable.empty:
+        return "<p>کوئی ٹائم ٹیبل دستیاب نہیں</p>"
+    day_order = {"ہفتہ": 0, "اتوار": 1, "پیر": 2, "منگل": 3, "بدھ": 4, "جمعرات": 5}
+    df_timetable['day_order'] = df_timetable['دن'].map(day_order)
+    df_timetable = df_timetable.sort_values(['day_order', 'وقت'])
+    pivot = df_timetable.pivot(index='وقت', columns='دن', values='کتاب')
+    pivot = pivot.fillna("—")
+    html = f"""
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head><meta charset="UTF-8"><title>ٹائم ٹیبل</title>
+    <style>
+        @font-face {{ font-family: 'Jameel Noori Nastaleeq'; src: url('https://fonts.cdnfonts.com/css/jameel-noori-nastaleeq'); }}
+        body {{ font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', Arial, sans-serif; margin: 20px; direction: rtl; text-align: right; }}
+        h2, h3 {{ text-align: center; color: #1e5631; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
+        th {{ background-color: #f2f2f2; }}
+        @media print {{ body {{ margin: 0; }} .no-print {{ display: none; }} }}
+    </style>
+    </head>
+    <body>
+        <div class="header">
+            <h2>جامعہ ملیہ اسلامیہ فیصل آباد</h2>
+            <h3>ٹائم ٹیبل</h3>
+        </div>
+        {pivot.to_html(classes='print-table', border=1, justify='center', escape=False)}
+        <div class="signatures" style="display:flex; justify-content:space-between; margin-top:50px;">
+            <span>دستخط استاذ: _______________________</span>
+            <span>دستخط مہتمم: _______________________</span>
+        </div>
+        <div class="no-print" style="text-align:center; margin-top:30px;">
+            <button onclick="window.print()">🖨️ پرنٹ کریں</button>
+        </div>
+    </body>
+    </html>
+    """
+    return html
+    # -*- coding: utf-8 -*-
+"""
+جامعہ ملیہ اسلامیہ فیصل آباد | سمارٹ ERP
+حصہ 2: اسٹائلنگ، لاگ ان سسٹم، مینو ڈیفینیشن، اور پاسورڈ فنکشنز
+"""
 
-
-# ─────────────────────────────────────────
-# STEP 7: CONSTANTS
-# ─────────────────────────────────────────
-SURAHS = [
-    "الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة",
-    "الأنعام", "الأعراف", "الأنفال", "التوبة", "يونس",
-    "هود", "يوسف", "الرعد", "إبراهيم", "الحجر", "النحل",
-    "الإسراء", "الكهف", "مريم", "طه", "الأنبياء", "الحج",
-    "المؤمنون", "النور", "الفرقان", "الشعراء", "النمل", "القصص",
-    "العنكبوت", "الروم", "لقمان", "السجدة", "الأحزاب", "سبأ",
-    "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر",
-    "فصلت", "الشورى", "الزخرف", "الدخان", "الجاثية", "الأحقاف",
-    "محمد", "الفتح", "الحجرات", "ق", "الذاريات", "الطور",
-    "النجم", "القمر", "الرحمن", "الواقعة", "الحديد", "المجادلة",
-    "الحشر", "الممتحنة", "الصف", "الجمعة", "المنافقون", "التغابن",
-    "الطلاق", "التحریم", "الملک", "القلم", "الحاقة", "المعارج",
-    "نوح", "الجن", "المزمل", "المدثر", "القیامة", "الإنسان",
-    "المرسلات", "النبأ", "النازعات", "عبس", "التکویر", "الإنفطار",
-    "المطففین", "الإنشقاق", "البروج", "الطارق", "الأعلى", "الغاشیة",
-    "الفجر", "البلد", "الشمس", "اللیل", "الضحى", "الشرح",
-    "التین", "العلق", "القدر", "البینة", "الزلزلة", "العادیات",
-    "القارعة", "التکاثر", "العصر", "الهمزة", "الفیل", "قریش",
-    "الماعون", "الکوثر", "الکافرون", "النصر", "المسد", "الإخلاص",
-    "الفلق", "الناس",
-]
-PARAS   = [f"پارہ {i}" for i in range(1, 31)]
-DAYS_UR = ["پیر", "منگل", "بدھ", "جمعرات", "جمعہ", "ہفتہ", "اتوار"]
-CLEAN   = ["بہترین", "بہتر", "ناقص"]
-DEPTS   = ["حفظ", "قاعدہ", "درسِ نظامی", "عصری تعلیم"]
-MIQDAR  = ["مکمل", "آدھا", "پون", "پاؤ"]
-ATT     = ["حاضر", "غیر حاضر", "رخصت"]
-
-
-# ─────────────────────────────────────────
-# STEP 8: INIT DB
-# ─────────────────────────────────────────
-init_db()
-
-# ─────────────────────────────────────────
-# STEP 9: SESSION STATE
-# ─────────────────────────────────────────
-defaults = {
-    "logged_in": False,
-    "username": "",
-    "role": "",
-    "page": "home",
-    "sel_stu": None,
-    "entry_dept": "حفظ",
-    "entry_date": str(date.today()),
-}
-for k, v in defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
-
-def goto(p):
-    st.session_state.page = p
-    st.session_state.sel_stu = None
-    st.rerun()
-
-
-IS_ADMIN = st.session_state.role == "admin"
-
-# ─────────────────────────────────────────
-# STEP 10: CSS
-# ─────────────────────────────────────────
+# ==================== اسٹائلنگ (CSS) ====================
+st.set_page_config(page_title="جامعہ ملیہ اسلامیہ فیصل آباد | سمارٹ ERP", layout="wide", initial_sidebar_state="expanded")
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;500;700&display=swap');
-
-:root {
-  --green:  #0a5c3c;
-  --green2: #0d7a52;
-  --green3: #10966a;
-  --pale:   #e8f5ee;
-  --gold:   #c9982a;
-  --gold2:  #f5c842;
-  --white:  #ffffff;
-  --bg:     #f2f7f4;
-  --text:   #1a2e25;
-  --gray:   #5a6e64;
-  --border: #d4e6da;
-  --rad:    14px;
-  --rads:   10px;
-  --sh:     0 2px 12px rgba(10,92,60,.09);
-  --sh2:    0 6px 28px rgba(10,92,60,.16);
-}
-
-/* Base */
-* { font-family: 'Noto Nastaliq Urdu', Georgia, serif !important;
-    direction: rtl !important; box-sizing: border-box; }
-html, body, [class*="css"] { direction: rtl; text-align: right; }
-.stApp { background: var(--bg); }
-#MainMenu, footer, header { visibility: hidden !important; }
-.block-container { padding: 0 !important; max-width: 100% !important; }
-section[data-testid="stSidebar"] { display: none !important; }
-
-/* ─ TOP BAR ─ */
-.topbar {
-  background: linear-gradient(135deg, var(--green) 0%, var(--green2) 100%);
-  padding: 10px 16px;
-  display: flex; align-items: center; justify-content: space-between;
-  box-shadow: 0 2px 12px rgba(0,0,0,.22);
-  position: sticky; top: 0; z-index: 100;
-}
-.tb-left { display: flex; align-items: center; gap: 10px; }
-.tb-icon { font-size: 2rem; }
-.tb-name { color: #fff; font-size: 1rem; font-weight: 700; }
-.tb-sub  { color: var(--gold2); font-size: .70rem; }
-.tb-user { background: rgba(255,255,255,.15);
-  border: 1px solid rgba(255,255,255,.25);
-  border-radius: 24px; padding: 4px 14px;
-  color: #fff; font-size: .78rem; }
-
-/* ─ MAIN WRAP ─ */
-.mw { max-width: 1060px; margin: 0 auto; padding: 14px 14px 90px; }
-
-/* ─ SQUARE NAV BUTTONS ─ */
-/* We use Streamlit columns + buttons styled via CSS */
-.stButton > button {
-  background: var(--white) !important;
-  color: var(--text) !important;
-  border: 2px solid var(--border) !important;
-  border-radius: var(--rad) !important;
-  padding: 10px 6px 8px !important;
-  font-size: .75rem !important;
-  font-weight: 700 !important;
-  line-height: 1.4 !important;
-  box-shadow: var(--sh) !important;
-  transition: all .18s ease !important;
-  min-height: 72px !important;
-  width: 100% !important;
-}
-.stButton > button:hover {
-  border-color: var(--green2) !important;
-  transform: translateY(-2px) scale(1.02) !important;
-  box-shadow: var(--sh2) !important;
-  background: var(--pale) !important;
-  color: var(--green) !important;
-}
-
-/* ─ ACTION BUTTONS (forms etc) ─ */
-.act-btn > button {
-  background: linear-gradient(135deg, var(--green), var(--green2)) !important;
-  color: #fff !important;
-  border: none !important;
-  border-radius: var(--rads) !important;
-  min-height: 40px !important;
-  font-size: .85rem !important;
-  font-weight: 700 !important;
-}
-.act-btn > button:hover {
-  background: linear-gradient(135deg, #082e1e, var(--green)) !important;
-  transform: translateY(-1px) !important;
-}
-
-/* ─ PAGE CARD ─ */
-.pc {
-  background: var(--white);
-  border-radius: var(--rad);
-  padding: 18px;
-  box-shadow: var(--sh);
-  margin-bottom: 12px;
-  border: 1px solid rgba(10,92,60,.06);
-}
-
-/* ─ SECTION HEADER ─ */
-.sh {
-  background: linear-gradient(135deg, var(--green), var(--green2));
-  border-radius: var(--rad);
-  padding: 13px 18px;
-  margin-bottom: 14px;
-  display: flex; align-items: center; gap: 10px;
-}
-.sh-ico { font-size: 1.4rem; }
-.sh-title { color: #fff; font-size: 1rem; font-weight: 700; }
-.sh-sub { color: rgba(255,255,255,.75); font-size: .72rem; margin-top: 1px; }
-
-/* ─ METRICS ─ */
-.mets {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px; margin-bottom: 14px;
-}
-@media(max-width:600px) { .mets { grid-template-columns: repeat(2,1fr); } }
-.mc {
-  background: var(--white);
-  border-radius: var(--rad);
-  padding: 14px 10px;
-  text-align: center;
-  box-shadow: var(--sh);
-  position: relative; overflow: hidden;
-}
-.mc::after {
-  content: ''; position: absolute;
-  bottom: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg, var(--green), var(--gold));
-}
-.mc-ico { font-size: 1.6rem; display: block; margin-bottom: 3px; }
-.mc-val { font-size: 1.9rem; font-weight: 800; color: var(--green); line-height: 1; }
-.mc-lbl { font-size: .72rem; color: var(--gray); margin-top: 2px; }
-
-/* ─ STUDENT ICON CARDS ─ */
-.stu-ico-card {
-  background: var(--white);
-  border: 2px solid var(--border);
-  border-radius: var(--rad);
-  padding: 12px 8px 10px;
-  text-align: center;
-  cursor: pointer;
-  box-shadow: var(--sh);
-  transition: all .2s ease;
-  position: relative;
-}
-.stu-ico-card.done {
-  background: #e8f8ef;
-  border-color: #22c55e;
-}
-.stu-ico-card.sel {
-  background: linear-gradient(145deg, var(--green), var(--green2));
-  border-color: var(--green);
-  box-shadow: var(--sh2);
-}
-.stu-avatar {
-  width: 48px; height: 48px;
-  border-radius: 12px;
-  display: flex; align-items: center;
-  justify-content: center;
-  margin: 0 auto 7px;
-  font-size: 1.4rem;
-  background: linear-gradient(145deg, var(--green), var(--green3));
-  box-shadow: 0 3px 8px rgba(10,92,60,.22);
-}
-.stu-ico-card.done .stu-avatar { background: linear-gradient(145deg,#16a34a,#15803d); }
-.stu-ico-card.sel .stu-avatar  { background: rgba(255,255,255,.25); }
-.stu-nm { font-size: .8rem; font-weight: 700; color: var(--text); line-height: 1.3; }
-.stu-fn { font-size: .68rem; color: var(--gray); }
-.stu-ico-card.sel .stu-nm,
-.stu-ico-card.sel .stu-fn { color: #fff; }
-.done-tag {
-  position: absolute; top: 4px; left: 4px;
-  background: #16a34a; color: #fff;
-  border-radius: 6px; font-size: .58rem;
-  padding: 1px 5px; font-weight: 700;
-}
-
-/* ─ GRADE CHIPS ─ */
-.chip {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 20px;
-  font-size: .75rem; font-weight: 700;
-}
-.cn { background: #d1fae5; color: #065f46; }
-.cp { background: #ede9fe; color: #4c1d95; }
-.cb { background: #dbeafe; color: #1e40af; }
-.cy { background: #fef3c7; color: #92400e; }
-.co { background: #ffedd5; color: #9a3412; }
-.cr { background: #fee2e2; color: #991b1b; }
-.cg { background: #f3f4f6; color: #374151; }
-
-/* ─ STATUS CHIPS ─ */
-.sp { background: #fef3c7; color: #92400e;
-      border-radius: 16px; padding: 2px 10px; font-size: .72rem; font-weight: 700; }
-.so { background: #d1fae5; color: #065f46;
-      border-radius: 16px; padding: 2px 10px; font-size: .72rem; font-weight: 700; }
-.sr { background: #fee2e2; color: #991b1b;
-      border-radius: 16px; padding: 2px 10px; font-size: .72rem; font-weight: 700; }
-
-/* ─ LEAVE CARD ─ */
-.lv-card {
-  background: var(--white);
-  border-right: 4px solid var(--gold);
-  border-radius: var(--rad);
-  padding: 12px 16px; margin-bottom: 8px;
-  box-shadow: var(--sh);
-}
-
-/* ─ NOTIF ─ */
-.nf-card {
-  background: linear-gradient(135deg,#f0f9ff,#e0f2fe);
-  border-right: 4px solid #0369a1;
-  border-radius: var(--rads);
-  padding: 10px 14px; margin-bottom: 8px;
-}
-.nf-card h5 { color: #0369a1 !important; margin: 0 0 3px !important; font-size: .88rem !important; }
-.nf-card p  { color: var(--text); margin: 0; font-size: .80rem; }
-.nf-card sm { color: var(--gray); font-size: .68rem; }
-
-/* ─ PROGRESS ─ */
-.prog-wrap { background: #e5e7eb; border-radius: 10px; overflow: hidden; height: 15px; }
-.prog-bar  { height: 100%;
-  background: linear-gradient(90deg, var(--green), var(--gold));
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center; }
-.prog-txt  { color: #fff; font-size: .65rem; font-weight: 700; }
-
-/* ─ TROPHY ─ */
-.trophy {
-  background: linear-gradient(145deg,#fffdf0,#fdf3d0);
-  border: 2px solid rgba(201,152,42,.22);
-  border-radius: 18px; padding: 18px 12px;
-  text-align: center; position: relative;
-  box-shadow: 0 5px 24px rgba(201,152,42,.12);
-  transition: transform .25s; overflow: hidden;
-}
-.trophy::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
-  background: linear-gradient(90deg,var(--gold),var(--gold2),var(--gold));
-}
-.trophy:hover { transform: translateY(-5px); }
-.trophy-medal { font-size: 2.4rem; display: block; margin-bottom: 5px; }
-.trophy-name  { font-size: .94rem; font-weight: 700; color: var(--text); margin: 4px 0 2px; }
-.trophy-sub   { font-size: .72rem; color: var(--gray); }
-.trophy-score {
-  display: inline-block;
-  background: linear-gradient(135deg,var(--green),var(--green2));
-  color: #fff; border-radius: 20px;
-  padding: 3px 14px; font-size: .78rem; font-weight: 700;
-  margin-top: 7px;
-}
-
-/* ─ INPUTS ─ */
-.stTextInput > div > div > input,
-.stTextArea textarea,
-.stNumberInput > div > div > input,
-.stDateInput > div > div > input,
-.stTimeInput > div > div > input {
-  border-radius: var(--rads) !important;
-  border: 1.5px solid var(--border) !important;
-  direction: rtl !important;
-  font-size: .85rem !important;
-}
-
-/* ─ TABS ─ */
-.stTabs [data-baseweb="tab-list"] {
-  background: var(--pale) !important;
-  border-radius: var(--rad) !important;
-  padding: 4px !important; gap: 4px !important;
-}
-.stTabs [data-baseweb="tab"] {
-  border-radius: var(--rads) !important;
-  border: none !important;
-  color: var(--gray) !important;
-  font-weight: 700 !important;
-  font-size: .80rem !important;
-}
-.stTabs [aria-selected="true"] {
-  background: linear-gradient(135deg, var(--green), var(--green2)) !important;
-  color: #fff !important;
-  box-shadow: 0 2px 8px rgba(10,92,60,.25) !important;
-}
-
-/* ─ ALERTS ─ */
-.stSuccess > div { background: #f0fdf4 !important; border-color: #86efac !important; border-radius: var(--rads) !important; }
-.stError   > div { background: #fff1f2 !important; border-color: #fca5a5 !important; border-radius: var(--rads) !important; }
-.stWarning > div { background: #fffbeb !important; border-color: #fcd34d !important; border-radius: var(--rads) !important; }
-.stInfo    > div { background: #f0f9ff !important; border-color: #93c5fd !important; border-radius: var(--rads) !important; }
-
-/* ─ DATAFRAME ─ */
-.stDataFrame { border-radius: var(--rads) !important; overflow: hidden !important; box-shadow: var(--sh) !important; }
-
-/* ─ EXPANDER ─ */
-.streamlit-expanderHeader {
-  background: linear-gradient(135deg,#f0f8f4,#e4f2eb) !important;
-  border-radius: var(--rads) !important;
-  border: 1px solid rgba(10,92,60,.12) !important;
-}
-
-/* ─ DIVIDER ─ */
-hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
-
-/* ─ BOTTOM PAD ─ */
-.bottom-pad { height: 80px; }
-
-/* ─ LOGIN BOX ─ */
-.login-box {
-  background: #fff; border-radius: 20px;
-  padding: 30px 24px; max-width: 400px;
-  margin: 0 auto;
-  box-shadow: 0 20px 60px rgba(0,0,0,.20);
-}
+    @font-face {
+        font-family: 'Jameel Noori Nastaleeq';
+        src: url('https://raw.githubusercontent.com/urdufonts/jameel-noori-nastaleeq/master/JameelNooriNastaleeq.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+    }
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu&display=swap');
+    * {
+        font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', 'Arial', sans-serif;
+    }
+    body { direction: rtl; text-align: right; background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%); }
+    .stSidebar { background: linear-gradient(180deg, #1e5631 0%, #0b2b1a 100%); color: white; }
+    .stSidebar * { color: white !important; }
+    .stSidebar .stRadio label { color: white !important; font-weight: bold; font-size: 1rem; }
+    .stSidebar .stRadio [role="radiogroup"] div { color: white !important; }
+    .stSidebar .stRadio [role="radiogroup"] div[data-baseweb="radio"]:hover { background-color: #2e7d32; border-radius: 5px; }
+    .stButton > button { background: linear-gradient(90deg, #1e5631, #2e7d32); color: white; border-radius: 30px; border: none; padding: 0.5rem 1rem; font-weight: bold; transition: 0.3s; width: 100%; }
+    .stButton > button:hover { transform: scale(1.02); background: linear-gradient(90deg, #2e7d32, #1e5631); }
+    .main-header { text-align: center; background: linear-gradient(135deg, #f1f8e9, #d4e0c9); padding: 1rem; border-radius: 20px; margin-bottom: 1rem; border-bottom: 4px solid #1e5631; }
+    .report-card { background: white; border-radius: 15px; padding: 1rem; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+    .stTabs [data-baseweb="tab"] { border-radius: 30px; padding: 0.5rem 1rem; background-color: #e0e0e0; }
+    .stTabs [aria-selected="true"] { background: linear-gradient(90deg, #1e5631, #2e7d32); color: white; }
+    .best-student-card {
+        background: linear-gradient(135deg, #fff9e6, #ffe6b3);
+        border-radius: 20px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        transition: 0.3s;
+    }
+    .best-student-card:hover { transform: translateY(-5px); }
+    .gold { color: #d4af37; }
+    .silver { color: #a0a0a0; }
+    .bronze { color: #cd7f32; }
+    @media (max-width: 768px) {
+        .stButton > button { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+        .main-header h1 { font-size: 1.5rem; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
+# ==================== لاگ ان سسٹم ====================
+def verify_login(username, password):
+    """یوزرنیم اور پاسورڈ کی تصدیق کرتا ہے"""
+    conn = get_db_connection()
+    res = conn.execute("SELECT * FROM teachers WHERE name=? AND password=?", (username, password)).fetchone()
+    if not res:
+        hashed = hash_password(password)
+        res = conn.execute("SELECT * FROM teachers WHERE name=? AND password=?", (username, hashed)).fetchone()
+    conn.close()
+    return res
 
-# ─────────────────────────────────────────
-# STEP 11: UI HELPERS
-# ─────────────────────────────────────────
-def section(icon, title, sub=""):
-    s = f'<div class="sh"><span class="sh-ico">{icon}</span><div>'
-    s += f'<div class="sh-title">{title}</div>'
-    if sub:
-        s += f'<div class="sh-sub">{sub}</div>'
-    s += '</div></div>'
-    st.markdown(s, unsafe_allow_html=True)
+# سیشن اسٹیٹ انیشیلائز کریں
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-
-def chip(grade):
-    cls = {
-        "ممتاز": "cn", "جید جداً": "cp", "جید": "cb",
-        "مقبول": "cy", "ناقص": "co", "کمزور": "co",
-        "ناکام": "cr", "غیر حاضر": "cg", "رخصت": "cg",
-    }.get(grade, "cg")
-    return f"<span class='chip {cls}'>{grade}</span>"
-
-
-def metric_row(items):
-    """items = list of (icon, value, label)"""
-    cols = "".join(
-        f'<div class="mc"><span class="mc-ico">{ico}</span>'
-        f'<div class="mc-val">{val}</div>'
-        f'<div class="mc-lbl">{lbl}</div></div>'
-        for ico, val, lbl in items
-    )
-    st.markdown(f'<div class="mets">{cols}</div>', unsafe_allow_html=True)
-
-
-def progress_bar(value, total, label=""):
-    pct = min(int((value / (total or 1)) * 100), 100)
-    st.markdown(
-        f'<div style="font-size:.80rem;font-weight:700;color:#0a5c3c;margin-bottom:4px">'
-        f'{label}: {value}/{total}</div>'
-        f'<div class="prog-wrap"><div class="prog-bar" style="width:{pct}%">'
-        f'<span class="prog-txt">{pct}%</span></div></div>'
-        f'<div style="font-size:.68rem;color:#6b7280;margin-top:3px">'
-        f'{total - value} باقی</div>',
-        unsafe_allow_html=True,
-    )
-
-
-# ─────────────────────────────────────────
-# STEP 12: LOGIN
-# ─────────────────────────────────────────
+# اگر لاگ ان نہیں تو لاگ ان فارم دکھائیں
 if not st.session_state.logged_in:
-    st.markdown("<br>", unsafe_allow_html=True)
-    _, col, _ = st.columns([1, 1.2, 1])
-    with col:
-        st.markdown("""
-        <div class="login-box">
-          <div style="text-align:center;margin-bottom:18px">
-            <span style="font-size:3.5rem">🕌</span>
-            <h2 style="color:#0a5c3c;margin:6px 0 2px;font-size:1.2rem">
-              جامعہ ملیہ اسلامیہ</h2>
-            <p style="color:#c9982a;margin:0;font-size:.80rem">
-              فیصل آباد — Smart ERP v5.0</p>
-          </div>
-        </div>""", unsafe_allow_html=True)
-
-        with st.form("login_form"):
-            u = st.text_input("👤 صارف نام")
-            p = st.text_input("🔑 پاسورڈ", type="password")
-            btn = st.form_submit_button("▶  لاگ ان کریں", use_container_width=True)
-
-        if btn:
-            if u.strip() and p:
-                user = query(
-                    "SELECT * FROM users WHERE username=? AND is_active=1",
-                    (u.strip(),), one=True
-                )
-                if user and verify_password(p, user["password"]):
-                    st.session_state.logged_in = True
-                    st.session_state.username  = u.strip()
-                    st.session_state.role      = user["role"]
-                    st.session_state.page      = "home"
-                    IS_ADMIN = user["role"] == "admin"
-                    log_action(u.strip(), "Login")
+    st.markdown("<div class='main-header'><h1>🕌 جامعہ ملیہ اسلامیہ فیصل آباد</h1><p>اسمارٹ تعلیمی و انتظامی پورٹل</p></div>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,1.5,1])
+    with col2:
+        with st.container():
+            st.markdown("<div class='report-card'><h3>🔐 لاگ ان</h3>", unsafe_allow_html=True)
+            u = st.text_input("صارف نام")
+            p = st.text_input("پاسورڈ", type="password")
+            if st.button("داخل ہوں"):
+                res = verify_login(u, p)
+                if res:
+                    st.session_state.logged_in, st.session_state.username = True, u
+                    st.session_state.user_type = "admin" if u == "admin" else "teacher"
+                    log_audit(u, "Login", f"User type: {st.session_state.user_type}")
                     st.rerun()
                 else:
-                    st.error("❌ غلط نام یا پاسورڈ")
-            else:
-                st.warning("نام اور پاسورڈ ضروری ہیں")
-
-        st.caption("🔒 ڈیفالٹ: admin / jamia123")
+                    st.error("غلط معلومات")
+            st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
-# ─────────────────────────────────────────
-# STEP 13: TOP BAR (logged in)
-# ─────────────────────────────────────────
-IS_ADMIN = st.session_state.role == "admin"
-
-st.markdown(
-    f'<div class="topbar">'
-    f'<div class="tb-left">'
-    f'<span class="tb-icon">🕌</span>'
-    f'<div><div class="tb-name">جامعہ ملیہ اسلامیہ فیصل آباد</div>'
-    f'<div class="tb-sub">Smart ERP v5.0</div></div>'
-    f'</div>'
-    f'<div class="tb-user">'
-    f'{"🛡️ ایڈمن" if IS_ADMIN else "👩‍🏫 استاد"} — {st.session_state.username}'
-    f'</div></div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown('<div class="mw">', unsafe_allow_html=True)
-
-# ─────────────────────────────────────────
-# STEP 14: NAVIGATION
-# ─────────────────────────────────────────
-if IS_ADMIN:
-    NAV = [
-        ("home",    "📊", "ڈیش بورڈ"),
-        ("daily",   "📋", "یومیہ رپورٹ"),
-        ("exams",   "🎓", "امتحانات"),
-        ("result",  "📜", "رزلٹ"),
-        ("para",    "📖", "پارہ رپورٹ"),
-        ("t_att_a", "🕒", "حاضری"),
-        ("leaves",  "🏛️", "رخصت"),
-        ("users",   "👥", "یوزرز"),
-        ("timetab", "📚", "ٹائم ٹیبل"),
-        ("monitor", "🔍", "نگرانی"),
-        ("notifs",  "📢", "اعلانات"),
-        ("best",    "🏆", "بہترین"),
-        ("pw",      "🔑", "پاسورڈ"),
-        ("backup",  "⚙️", "بیک اپ"),
-    ]
+# ==================== مینو ڈیفینیشن ====================
+if st.session_state.user_type == "admin":
+    menu = ["📊 ایڈمن ڈیش بورڈ", "📊 یومیہ تعلیمی رپورٹ", "🎓 امتحانی نظام", "📜 ماہانہ رزلٹ کارڈ",
+            "📘 پارہ تعلیمی رپورٹ", "🕒 اساتذہ حاضری", "🏛️ رخصت کی منظوری",
+            "👥 یوزر مینجمنٹ", "📚 ٹائم ٹیبل مینجمنٹ", "🔑 پاسورڈ تبدیل کریں", "📋 عملہ نگرانی و شکایات",
+            "📢 نوٹیفیکیشنز", "📈 تجزیہ و رپورٹس", "🏆 ماہانہ بہترین طلباء", "⚙️ بیک اپ & سیٹنگز"]
 else:
-    NAV = [
-        ("home",   "🏠", "مرکزی"),
-        ("entry",  "📝", "سبق"),
-        ("t_exam", "🎓", "امتحان"),
-        ("t_lv",   "📩", "رخصت"),
-        ("t_att",  "🕒", "حاضری"),
-        ("t_tt",   "📚", "ٹائم ٹیبل"),
-        ("notifs", "📢", "اعلانات"),
-        ("pw",     "🔑", "پاسورڈ"),
-    ]
+    menu = ["📝 روزانہ سبق اندراج", "🎓 امتحانی درخواست", "📩 رخصت کی درخواست",
+            "🕒 میری حاضری", "📚 میرا ٹائم ٹیبل", "🔑 پاسورڈ تبدیل کریں", "📢 نوٹیفیکیشنز"]
 
-PER_ROW = 7 if IS_ADMIN else 4
-pg = st.session_state.page
+selected = st.sidebar.radio("📌 مینو", menu)
 
-rows_nav = [NAV[i:i+PER_ROW] for i in range(0, len(NAV), PER_ROW)]
-for row in rows_nav:
-    cols = st.columns(len(row))
-    for col, (pid, ico, lbl) in zip(cols, row):
-        with col:
-            label = f"{ico}\n{lbl}"
-            if st.button(label, key=f"nb_{pid}", use_container_width=True):
-                st.session_state.page   = pid
-                st.session_state.sel_stu = None
-                st.rerun()
+# ==================== ڈیٹا کنسٹینٹس ====================
+surahs_urdu = ["الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة", "الأنعام", "الأعراف", "الأنفال", "التوبة", "يونس",
+               "هود", "يوسف", "الرعد", "إبراهيم", "الحجر", "النحل", "الإسراء", "الكهف", "مريم", "طه", "الأنبياء", "الحج",
+               "المؤمنون", "النور", "الفرقان", "الشعراء", "النمل", "القصص", "العنكبوت", "الروم", "لقمان", "السجدة", "الأحزاب",
+               "سبأ", "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر", "فصلت", "الشورى", "الزخرف", "الدخان", "الجاثية", "الأحقاف",
+               "محمد", "الفتح", "الحجرات", "ق", "الذاريات", "الطور", "النجم", "القمر", "الرحمن", "الواقعة", "الحديد", "المجادلة",
+               "الحشر", "الممتحنة", "الصف", "الجمعة", "المنافقون", "التغابن", "الطلاق", "التحریم", "الملک", "القلم", "الحاقة",
+               "المعارج", "نوح", "الجن", "المزمل", "المدثر", "القیامة", "الإنسان", "المرسلات", "النبأ", "النازعات", "عبس", "التکویر",
+               "الإنفطار", "المطففین", "الإنشقاق", "البروج", "الطارق", "الأعلى", "الغاشیة", "الفجر", "البلد", "الشمس", "اللیل",
+               "الضحى", "الشرح", "التین", "العلق", "القدر", "البینة", "الزلزلة", "العادیات", "القارعة", "التکاثر", "العصر", "الهمزة",
+               "الفیل", "قریش", "الماعون", "الکوثر", "الکافرون", "النصر", "المسد", "الإخلاص", "الفلق", "الناس"]
+paras = [f"پارہ {i}" for i in range(1, 31)]
+cleanliness_options = ["بہترین", "بہتر", "ناقص"]
 
-# Logout
-_, lout_col = st.columns([6, 1])
-with lout_col:
-    if st.button("🚪 آؤٹ", use_container_width=True):
-        log_action(st.session_state.username, "Logout")
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
-        st.rerun()
+# ==================== پاسورڈ مینجمنٹ فنکشنز ====================
+def verify_password(user, plain_password):
+    """چیک کرتا ہے کہ دیا گیا پاسورڈ صحیح ہے یا نہیں"""
+    conn = get_db_connection()
+    res = conn.execute("SELECT password FROM teachers WHERE name=?", (user,)).fetchone()
+    conn.close()
+    if not res:
+        return False
+    stored = res[0]
+    if stored == plain_password:
+        return True
+    if stored == hash_password(plain_password):
+        return True
+    return False
 
-st.markdown("<hr>", unsafe_allow_html=True)
-pg = st.session_state.page   # refresh after nav
+def change_password(user, old_pass, new_pass):
+    """یوزر کا پاسورڈ تبدیل کرتا ہے"""
+    if not verify_password(user, old_pass):
+        return False
+    conn = get_db_connection()
+    new_hash = hash_password(new_pass)
+    conn.execute("UPDATE teachers SET password=? WHERE name=?", (new_hash, user))
+    conn.commit()
+    conn.close()
+    log_audit(user, "Password Changed", "Success")
+    return True
 
-# ═══════════════════════════════════════════════════════
-#  PAGES
-# ═══════════════════════════════════════════════════════
+def admin_reset_password(teacher_name, new_pass):
+    """ایڈمن کسی بھی استاد کا پاسورڈ ری سیٹ کر سکتا ہے"""
+    conn = get_db_connection()
+    new_hash = hash_password(new_pass)
+    conn.execute("UPDATE teachers SET password=? WHERE name=?", (new_hash, teacher_name))
+    conn.commit()
+    conn.close()
+    log_audit(st.session_state.username, "Admin Reset Password", f"Teacher: {teacher_name}")
+    # -*- coding: utf-8 -*-
+"""
+جامعہ ملیہ اسلامیہ فیصل آباد | سمارٹ ERP
+حصہ 3: ایڈمن کے تمام سیکشنز
+"""
 
-# ───────────────────────────────
-# ADMIN DASHBOARD
-# ───────────────────────────────
-if pg == "home" and IS_ADMIN:
-    section("📊", "ایڈمن ڈیش بورڈ", "جامعہ کا مکمل جائزہ")
+# ==================== ایڈمن سیکشنز ====================
+# 3.1 ایڈمن ڈیش بورڈ
+if selected == "📊 ایڈمن ڈیش بورڈ" and st.session_state.user_type == "admin":
+    st.markdown("<div class='main-header'><h1>📊 ایڈمن ڈیش بورڈ</h1></div>", unsafe_allow_html=True)
+    conn = get_db_connection()
+    total_students = conn.execute("SELECT COUNT(*) FROM students").fetchone()[0]
+    total_teachers = conn.execute("SELECT COUNT(*) FROM teachers WHERE name!='admin'").fetchone()[0]
+    col1, col2 = st.columns(2)
+    col1.metric("کل طلباء", total_students)
+    col2.metric("کل اساتذہ", total_teachers)
+    conn.close()
 
-    ts = scalar("SELECT COUNT(*) FROM students WHERE is_active=1")
-    tt = scalar("SELECT COUNT(*) FROM users WHERE role='teacher' AND is_active=1")
-    ta = scalar("SELECT COUNT(*) FROM teacher_attendance WHERE att_date=?", (str(date.today()),))
-    hr = (scalar("SELECT COUNT(*) FROM hifz_records") +
-          scalar("SELECT COUNT(*) FROM qaida_records") +
-          scalar("SELECT COUNT(*) FROM general_records"))
-    pl = scalar("SELECT COUNT(*) FROM leave_requests WHERE status='پینڈنگ'")
-    pe = scalar("SELECT COUNT(*) FROM exams WHERE status='پینڈنگ'")
-
-    metric_row([
-        ("👨‍🎓", ts, "کل طلباء"),
-        ("👩‍🏫", tt, "اساتذہ"),
-        ("✅",   ta, "آج حاضر"),
-        ("📋",   hr, "کل ریکارڈ"),
-    ])
-
-    if pl: st.warning(f"⏳ {pl} رخصت درخواستیں پینڈنگ")
-    if pe: st.info(f"🎓 {pe} امتحان پینڈنگ")
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("<div class='pc'>", unsafe_allow_html=True)
-        st.markdown("**📅 آج کی اساتذہ حاضری**")
-        rows = query(
-            "SELECT username AS استاد, arrival AS آمد, departure AS رخصت "
-            "FROM teacher_attendance WHERE att_date=?",
-            (str(date.today()),)
-        )
-        if rows:
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+# 3.2 یومیہ تعلیمی رپورٹ (صفائی کے ساتھ)
+elif selected == "📊 یومیہ تعلیمی رپورٹ" and st.session_state.user_type == "admin":
+    st.header("📊 یومیہ تعلیمی رپورٹ - صرف دیکھیں")
+    with st.sidebar:
+        d1 = st.date_input("تاریخ آغاز", date.today().replace(day=1))
+        d2 = st.date_input("تاریخ اختتام", date.today())
+        conn = get_db_connection()
+        teachers_list = ["تمام"] + [t[0] for t in conn.execute("SELECT DISTINCT t_name FROM hifz_records UNION SELECT name FROM teachers WHERE name!='admin'").fetchall()]
+        conn.close()
+        sel_teacher = st.selectbox("استاد / کلاس", teachers_list)
+        dept_filter = st.selectbox("شعبہ", ["تمام", "حفظ", "قاعدہ", "درسِ نظامی", "عصری تعلیم"])
+    
+    combined_df = pd.DataFrame()
+    if dept_filter in ["تمام", "حفظ"]:
+        conn = get_db_connection()
+        try:
+            hifz_df = pd.read_sql_query("""
+                SELECT h.r_date as تاریخ, s.name as نام, s.father_name as 'والد کا نام', s.roll_no as 'شناختی نمبر', h.t_name as استاد, 
+                       'حفظ' as شعبہ, h.surah as 'سبق', h.lines as 'کل ستر',
+                       h.sq_p as 'سبقی', h.sq_m as 'سبقی (غلطی)', h.sq_a as 'سبقی (اٹکن)',
+                       h.m_p as 'منزل', h.m_m as 'منزل (غلطی)', h.m_a as 'منزل (اٹکن)',
+                       h.attendance as حاضری, h.cleanliness as صفائی
+                FROM hifz_records h
+                JOIN students s ON h.student_id = s.id
+                WHERE h.r_date BETWEEN ? AND ?
+            """, conn, params=(d1, d2))
+            conn.close()
+            if not hifz_df.empty:
+                if sel_teacher != "تمام":
+                    hifz_df = hifz_df[hifz_df['استاد'] == sel_teacher]
+                combined_df = pd.concat([combined_df, hifz_df], ignore_index=True)
+        except Exception as e:
+            st.error(f"حفظ کے ریکارڈ لوڈ کرتے وقت خرابی: {str(e)}")
+    if dept_filter in ["تمام", "قاعدہ"]:
+        conn = get_db_connection()
+        try:
+            qaida_df = pd.read_sql_query("""
+                SELECT q.r_date as تاریخ, s.name as نام, s.father_name as 'والد کا نام', s.roll_no as 'شناختی نمبر', q.t_name as استاد,
+                       'قاعدہ' as شعبہ, q.lesson_no as 'تختی نمبر', q.total_lines as 'کل لائنیں',
+                       q.details as تفصیل, q.attendance as حاضری, q.cleanliness as صفائی
+                FROM qaida_records q
+                JOIN students s ON q.student_id = s.id
+                WHERE q.r_date BETWEEN ? AND ?
+            """, conn, params=(d1, d2))
+            conn.close()
+            if not qaida_df.empty:
+                if sel_teacher != "تمام":
+                    qaida_df = qaida_df[qaida_df['استاد'] == sel_teacher]
+                combined_df = pd.concat([combined_df, qaida_df], ignore_index=True)
+        except Exception as e:
+            st.error(f"قاعدہ کے ریکارڈ لوڈ کرتے وقت خرابی: {str(e)}")
+    if dept_filter in ["تمام", "درسِ نظامی", "عصری تعلیم"]:
+        conn = get_db_connection()
+        has_attendance = column_exists('general_education', 'attendance')
+        if has_attendance:
+            select_cols = """
+                g.r_date as تاریخ, s.name as نام, s.father_name as 'والد کا نام', s.roll_no as 'شناختی نمبر', g.t_name as استاد,
+                g.dept as شعبہ, g.book_subject as 'کتاب/مضمون', g.today_lesson as 'آج کا سبق',
+                g.homework as 'ہوم ورک', g.performance as کارکردگی, g.attendance as حاضری, g.cleanliness as صفائی
+            """
         else:
-            st.caption("ابھی کوئی حاضری درج نہیں")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with c2:
-        st.markdown("<div class='pc'>", unsafe_allow_html=True)
-        st.markdown("**📊 شعبہ وار طلباء**")
-        dd = query(
-            "SELECT dept, COUNT(*) AS cnt FROM students WHERE is_active=1 GROUP BY dept"
-        )
-        for d in dd:
-            pct = min(int((d["cnt"] / (ts or 1)) * 100), 100)
-            st.markdown(
-                f'<div style="display:flex;justify-content:space-between;'
-                f'font-size:.80rem;margin-bottom:2px">'
-                f'<b>{d["dept"]}</b><span style="color:#0a5c3c">{d["cnt"]}</span></div>'
-                f'<div class="prog-wrap"><div class="prog-bar" style="width:{pct}%">'
-                f'<span class="prog-txt">{pct}%</span></div></div>',
-                unsafe_allow_html=True,
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# ───────────────────────────────
-# DAILY REPORT
-# ───────────────────────────────
-elif pg == "daily" and IS_ADMIN:
-    section("📋", "یومیہ تعلیمی رپورٹ")
-
-    c1, c2, c3, c4 = st.columns(4)
-    d1 = c1.date_input("از", date.today().replace(day=1))
-    d2 = c2.date_input("تا", date.today())
-    ds = c3.selectbox("شعبہ", ["تمام"] + DEPTS)
-    tlist = ["تمام"] + [r["username"] for r in query(
-        "SELECT username FROM users WHERE role='teacher' AND is_active=1")]
-    ts2 = c4.selectbox("استاد", tlist)
-
-    combined = []
-    tf = "" if ts2 == "تمام" else f" AND h.teacher='{ts2}'"
-    tf2 = "" if ts2 == "تمام" else f" AND q.teacher='{ts2}'"
-    tf3 = "" if ts2 == "تمام" else f" AND g.teacher='{ts2}'"
-    df3 = "" if ds == "تمام" else f" AND g.dept='{ds}'"
-
-    if ds in ("تمام", "حفظ"):
-        rows = query(
-            f"SELECT h.id, h.rec_date AS تاریخ, s.name AS نام, s.father_name AS والد, "
-            f"s.roll_no AS رول, h.teacher AS استاد, 'حفظ' AS شعبہ, "
-            f"h.sabaq AS سبق, h.sabaq_lines AS ستر, "
-            f"h.sq_text AS سبقی, h.sq_mistakes AS 'سبقی غلطی', "
-            f"h.manzil_text AS منزل, h.manzil_mistakes AS 'منزل غلطی', "
-            f"h.attendance AS حاضری, h.cleanliness AS صفائی, h.grade AS درجہ "
-            f"FROM hifz_records h JOIN students s ON h.student_id=s.id "
-            f"WHERE h.rec_date BETWEEN ? AND ?{tf} ORDER BY h.rec_date DESC",
-            (str(d1), str(d2))
-        )
-        combined.extend(rows or [])
-
-    if ds in ("تمام", "قاعدہ"):
-        rows = query(
-            f"SELECT q.id, q.rec_date AS تاریخ, s.name AS نام, s.father_name AS والد, "
-            f"s.roll_no AS رول, q.teacher AS استاد, 'قاعدہ' AS شعبہ, "
-            f"q.lesson_no AS سبق, q.total_lines AS لائنیں, "
-            f"'' AS سبقی, 0 AS 'سبقی غلطی', '' AS منزل, 0 AS 'منزل غلطی', "
-            f"q.attendance AS حاضری, q.cleanliness AS صفائی, '' AS درجہ "
-            f"FROM qaida_records q JOIN students s ON q.student_id=s.id "
-            f"WHERE q.rec_date BETWEEN ? AND ?{tf2} ORDER BY q.rec_date DESC",
-            (str(d1), str(d2))
-        )
-        combined.extend(rows or [])
-
-    if ds in ("تمام", "درسِ نظامی", "عصری تعلیم"):
-        rows = query(
-            f"SELECT g.id, g.rec_date AS تاریخ, s.name AS نام, s.father_name AS والد, "
-            f"s.roll_no AS رول, g.teacher AS استاد, g.dept AS شعبہ, "
-            f"g.subject AS سبق, 0 AS ستر, '' AS سبقی, 0 AS 'سبقی غلطی', "
-            f"'' AS منزل, 0 AS 'منزل غلطی', "
-            f"g.attendance AS حاضری, g.cleanliness AS صفائی, g.performance AS درجہ "
-            f"FROM general_records g JOIN students s ON g.student_id=s.id "
-            f"WHERE g.rec_date BETWEEN ? AND ?{df3}{tf3} ORDER BY g.rec_date DESC",
-            (str(d1), str(d2))
-        )
-        combined.extend(rows or [])
-
-    if combined:
-        df = pd.DataFrame(combined)
-        st.success(f"✅ کل {len(df)} ریکارڈ")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        if IS_ADMIN:
-            with st.expander("🗑️ ریکارڈ حذف کریں"):
-                with st.form("del_rec_form"):
-                    rc1, rc2 = st.columns(2)
-                    del_tbl = rc1.selectbox(
-                        "ٹیبل",
-                        ["hifz_records", "qaida_records", "general_records"],
-                    )
-                    del_id = rc2.number_input("ریکارڈ ID", min_value=1, step=1)
-                    if st.form_submit_button("🗑️ حذف کریں"):
-                        execute(f"DELETE FROM {del_tbl} WHERE id=?", (int(del_id),))
-                        st.success("✅ حذف!")
-                        st.rerun()
-        c1, c2 = st.columns(2)
-        c1.download_button("📥 CSV", df_csv(df), "daily.csv", "text/csv")
-        c2.download_button(
-            "📥 HTML رپورٹ",
-            make_html_report(df, "یومیہ تعلیمی رپورٹ", f"{d1} تا {d2}"),
-            "daily.html", "text/html",
-        )
+            select_cols = """
+                g.r_date as تاریخ, s.name as نام, s.father_name as 'والد کا نام', s.roll_no as 'شناختی نمبر', g.t_name as استاد,
+                g.dept as شعبہ, g.book_subject as 'کتاب/مضمون', g.today_lesson as 'آج کا سبق',
+                g.homework as 'ہوم ورک', g.performance as کارکردگی, '' as حاضری, g.cleanliness as صفائی
+            """
+        query = f"""
+            SELECT {select_cols}
+            FROM general_education g
+            JOIN students s ON g.student_id = s.id
+            WHERE g.r_date BETWEEN ? AND ?
+        """
+        params = [d1, d2]
+        if sel_teacher != "تمام":
+            query += " AND g.t_name = ?"
+            params.append(sel_teacher)
+        if dept_filter != "تمام":
+            query += " AND g.dept = ?"
+            params.append(dept_filter)
+        try:
+            gen_df = pd.read_sql_query(query, conn, params=params)
+            conn.close()
+            if not gen_df.empty:
+                combined_df = pd.concat([combined_df, gen_df], ignore_index=True)
+        except Exception as e:
+            st.error(f"عمومی تعلیم کے ریکارڈ لوڈ کرتے وقت خرابی: {str(e)}")
+    if combined_df.empty:
+        st.warning("کوئی ریکارڈ نہیں ملا")
     else:
-        st.info("اس مدت میں کوئی ریکارڈ نہیں")
+        st.success(f"کل {len(combined_df)} ریکارڈ ملے")
+        st.dataframe(combined_df, use_container_width=True)
+        html_report = generate_html_report(combined_df, "یومیہ تعلیمی رپورٹ", start_date=d1.strftime("%Y-%m-%d"), end_date=d2.strftime("%Y-%m-%d"))
+        st.download_button("📥 HTML رپورٹ ڈاؤن لوڈ کریں", html_report, "daily_report.html", "text/html")
+        if st.button("🖨️ پرنٹ کریں"):
+            st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html_report}`);w.print();</script>", height=0)
 
-# ───────────────────────────────
-# EXAMS
-# ───────────────────────────────
-elif pg == "exams" and IS_ADMIN:
-    section("🎓", "امتحانی نظام")
-    tab1, tab2 = st.tabs(["⏳ پینڈنگ", "✅ مکمل"])
-
+# 3.3 امتحانی نظام
+elif selected == "🎓 امتحانی نظام" and st.session_state.user_type == "admin":
+    st.header("🎓 امتحانی نظام")
+    tab1, tab2 = st.tabs(["پینڈنگ امتحانات", "مکمل شدہ"])
     with tab1:
-        pend = query(
-            "SELECT e.*, s.name, s.father_name, s.roll_no "
-            "FROM exams e JOIN students s ON e.student_id=s.id "
-            "WHERE e.status='پینڈنگ' ORDER BY e.created_at DESC"
-        )
-        if not pend:
-            st.success("✅ کوئی پینڈنگ امتحان نہیں")
-        for ex in (pend or []):
-            with st.expander(
-                f"👤 {ex.get('name','')} ولد {ex.get('father_name','')} "
-                f"| {ex.get('dept','')} | {ex.get('exam_type','')}"
-            ):
-                c1, c2, c3 = st.columns(3)
-                c1.info(f"📅 شروع: {ex.get('start_date','—')}")
-                c2.info(f"📅 ختم: {ex.get('end_date','—')}")
-                c3.info(f"🗓️ دن: {ex.get('total_days','—')}")
-                if ex.get("from_para"):
-                    st.info(f"📖 پارہ {ex['from_para']} تا {ex['to_para']}")
-                if ex.get("book_name"):
-                    st.info(f"📚 {ex['book_name']} | {ex.get('amount_read','')}")
-
-                qcols = st.columns(5)
-                qs = [
-                    qcols[i].number_input(f"س{i+1}", 0, 20, 0, key=f"q{i}_{ex['id']}")
-                    for i in range(5)
-                ]
-                total = sum(qs)
-                g = exam_grade(total)
-                st.markdown(
-                    f"**کل:** {total}/100 &nbsp; {chip(g)}",
-                    unsafe_allow_html=True,
-                )
-                bc1, bc2 = st.columns(2)
-                if bc1.button("✅ نتیجہ محفوظ", key=f"ex_save_{ex['id']}"):
-                    execute(
-                        "UPDATE exams SET q1=?,q2=?,q3=?,q4=?,q5=?,total=?,"
-                        "grade=?,status='مکمل',end_date=? WHERE id=?",
-                        (*qs, total, g, str(date.today()), ex["id"]),
-                    )
-                    if g != "ناکام":
-                        sid = ex["student_id"]
-                        fp = ex.get("from_para", 0) or 0
-                        tp = ex.get("to_para", 0) or 0
-                        if fp > 0:
-                            for para in range(int(fp), int(tp) + 1):
-                                if not query(
-                                    "SELECT id FROM passed_paras WHERE student_id=? AND para_no=?",
-                                    (sid, para), one=True,
-                                ):
-                                    execute(
-                                        "INSERT INTO passed_paras"
-                                        "(student_id,para_no,passed_date,exam_type,grade,marks)"
-                                        "VALUES(?,?,?,?,?,?)",
-                                        (sid, para, str(date.today()),
-                                         ex.get("exam_type",""), g, total),
-                                    )
-                        bk = ex.get("book_name", "")
-                        if bk:
-                            if not query(
-                                "SELECT id FROM passed_paras WHERE student_id=? AND book_name=?",
-                                (sid, bk), one=True,
-                            ):
-                                execute(
-                                    "INSERT INTO passed_paras"
-                                    "(student_id,book_name,passed_date,exam_type,grade,marks)"
-                                    "VALUES(?,?,?,?,?,?)",
-                                    (sid, bk, str(date.today()),
-                                     ex.get("exam_type",""), g, total),
-                                )
-                    log_action(st.session_state.username, "Exam Cleared", ex["id"])
-                    st.success("✅ محفوظ!")
-                    st.rerun()
-                if bc2.button("🗑️ حذف", key=f"ex_del_{ex['id']}"):
-                    execute("DELETE FROM exams WHERE id=?", (ex["id"],))
-                    st.rerun()
-
-    with tab2:
-        done = query(
-            "SELECT e.id, s.name AS نام, s.father_name AS والد, "
-            "e.dept AS شعبہ, e.exam_type AS امتحان, "
-            "e.total AS نمبر, e.grade AS گریڈ, e.end_date AS تاریخ "
-            "FROM exams e JOIN students s ON e.student_id=s.id "
-            "WHERE e.status='مکمل' ORDER BY e.end_date DESC"
-        )
-        if done:
-            df = pd.DataFrame(done)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            with st.expander("🗑️ حذف کریں"):
-                with st.form("del_exam_f"):
-                    di = st.number_input("ID", min_value=1, step=1)
-                    if st.form_submit_button("🗑️ حذف"):
-                        execute("DELETE FROM exams WHERE id=?", (int(di),))
-                        st.success("✅")
-                        st.rerun()
-            st.download_button("📥 CSV", df_csv(df), "exams.csv")
+        conn = get_db_connection()
+        pending = conn.execute("""
+            SELECT e.id, s.name, s.father_name, s.roll_no, e.dept, e.exam_type, e.from_para, e.to_para, e.book_name, e.amount_read, e.start_date, e.end_date, e.total_days
+            FROM exams e
+            JOIN students s ON e.student_id = s.id
+            WHERE e.status=?
+        """, ("پینڈنگ",)).fetchall()
+        conn.close()
+        if not pending:
+            st.info("کوئی پینڈنگ امتحان نہیں")
         else:
-            st.info("کوئی مکمل امتحان نہیں")
+            for eid, sn, fn, rn, dept, etype, fp, tp, book, amount, sd, ed, tdays in pending:
+                with st.expander(f"{sn} ولد {fn} | شناختی نمبر: {rn} | {dept} | {etype}"):
+                    st.write(f"**تاریخ ابتدا:** {sd}")
+                    st.write(f"**تاریخ اختتام:** {ed}")
+                    st.write(f"**کل دن:** {tdays if tdays else '-'}")
+                    if etype == "پارہ ٹیسٹ":
+                        st.info(f"پارہ نمبر: {fp} تا {tp}")
+                    else:
+                        st.info(f"کتاب: {book}")
+                        st.info(f"مقدار خواندگی: {amount}")
+                    cols = st.columns(5)
+                    q1 = cols[0].number_input("س1", 0, 20, key=f"q1_{eid}")
+                    q2 = cols[1].number_input("س2", 0, 20, key=f"q2_{eid}")
+                    q3 = cols[2].number_input("س3", 0, 20, key=f"q3_{eid}")
+                    q4 = cols[3].number_input("س4", 0, 20, key=f"q4_{eid}")
+                    q5 = cols[4].number_input("س5", 0, 20, key=f"q5_{eid}")
+                    total = q1+q2+q3+q4+q5
+                    if total >= 90: g = "ممتاز"
+                    elif total >= 80: g = "جید جداً"
+                    elif total >= 70: g = "جید"
+                    elif total >= 60: g = "مقبول"
+                    else: g = "ناکام"
+                    st.write(f"کل: {total} | گریڈ: {g}")
+                    if st.button("کلیئر کریں", key=f"save_{eid}"):
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        c.execute("""UPDATE exams SET q1=?, q2=?, q3=?, q4=?, q5=?, total=?, grade=?, status=?, end_date=? WHERE id=?""",
+                                  (q1,q2,q3,q4,q5,total,g,"مکمل", date.today(), eid))
+                        if g != "ناکام":
+                            stud_id = c.execute("SELECT student_id FROM exams WHERE id=?", (eid,)).fetchone()[0]
+                            if etype == "پارہ ٹیسٹ" and fp:
+                                for para in range(fp, tp+1):
+                                    existing = c.execute("SELECT 1 FROM passed_paras WHERE student_id=? AND para_no=?", (stud_id, para)).fetchone()
+                                    if not existing:
+                                        c.execute("INSERT INTO passed_paras (student_id, para_no, passed_date, exam_type, grade, marks) VALUES (?,?,?,?,?,?)",
+                                                  (stud_id, para, date.today(), etype, g, total))
+                            else:
+                                existing = c.execute("SELECT 1 FROM passed_paras WHERE student_id=? AND book_name=?", (stud_id, book)).fetchone()
+                                if not existing:
+                                    c.execute("INSERT INTO passed_paras (student_id, book_name, passed_date, exam_type, grade, marks) VALUES (?,?,?,?,?,?)",
+                                              (stud_id, book, date.today(), etype, g, total))
+                        conn.commit()
+                        conn.close()
+                        st.success("امتحان کلیئر کر دیا گیا")
+                        st.rerun()
+    with tab2:
+        conn = get_db_connection()
+        hist = pd.read_sql_query("""
+            SELECT s.name, s.father_name, s.roll_no, e.dept, e.exam_type, e.from_para, e.to_para, e.book_name, e.amount_read, e.start_date, e.end_date, e.total, e.grade
+            FROM exams e
+            JOIN students s ON e.student_id = s.id
+            WHERE e.status='مکمل'
+            ORDER BY e.end_date DESC
+        """, conn)
+        conn.close()
+        if not hist.empty:
+            st.dataframe(hist, use_container_width=True)
+            st.download_button("ہسٹری CSV", convert_df_to_csv(hist), "exam_history.csv")
+        else:
+            st.info("کوئی مکمل شدہ امتحان نہیں")
 
-# ───────────────────────────────
-# RESULT CARD
-# ───────────────────────────────
-elif pg == "result" and IS_ADMIN:
-    section("📜", "ماہانہ رزلٹ کارڈ")
-    studs = query(
-        "SELECT id,name,father_name,roll_no,dept FROM students "
-        "WHERE is_active=1 ORDER BY name"
-    )
-    if not studs:
+# 3.4 عملہ نگرانی و شکایات
+elif selected == "📋 عملہ نگرانی و شکایات" and st.session_state.user_type == "admin":
+    st.header("📋 عملہ نگرانی و شکایات")
+    tab1, tab2 = st.tabs(["➕ نیا اندراج", "📜 ریکارڈ دیکھیں"])
+    with tab1:
+        with st.form("new_monitoring"):
+            conn = get_db_connection()
+            staff_list = [t[0] for t in conn.execute("SELECT name FROM teachers WHERE name!='admin'").fetchall()]
+            conn.close()
+            if not staff_list:
+                st.warning("کوئی استاد/عملہ موجود نہیں۔ پہلے اساتذہ رجسٹر کریں۔")
+            else:
+                staff_name = st.selectbox("عملہ کا نام", staff_list)
+                note_date = st.date_input("تاریخ", date.today())
+                note_type = st.selectbox("نوعیت", ["یادداشت", "شکایت", "تنبیہ", "تعریف", "کارکردگی جائزہ"])
+                description = st.text_area("تفصیل", height=150)
+                action_taken = st.text_area("کیا کارروائی کی گئی؟", height=100)
+                status = st.selectbox("حالت", ["زیر التواء", "حل شدہ", "زیر غور"])
+                if st.form_submit_button("محفوظ کریں"):
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute("""INSERT INTO staff_monitoring 
+                                (staff_name, date, note_type, description, action_taken, status, created_by, created_at)
+                                VALUES (?,?,?,?,?,?,?,?)""",
+                              (staff_name, note_date, note_type, description, action_taken, status, st.session_state.username, datetime.now()))
+                    conn.commit()
+                    conn.close()
+                    log_audit(st.session_state.username, "Staff Monitoring Added", f"{staff_name} - {note_type}")
+                    st.success("اندراج محفوظ ہو گیا")
+                    st.rerun()
+    with tab2:
+        st.subheader("فلٹرز")
+        conn = get_db_connection()
+        staff_names = ["تمام"] + [t[0] for t in conn.execute("SELECT name FROM teachers WHERE name!='admin'").fetchall()]
+        conn.close()
+        filter_staff = st.selectbox("عملہ فلٹر کریں", staff_names)
+        filter_type = st.selectbox("نوعیت فلٹر کریں", ["تمام", "یادداشت", "شکایت", "تنبیہ", "تعریف", "کارکردگی جائزہ"])
+        start_date = st.date_input("تاریخ از", date.today() - timedelta(days=30))
+        end_date = st.date_input("تاریخ تا", date.today())
+        query = "SELECT id, staff_name as 'عملہ کا نام', date as تاریخ, note_type as نوعیت, description as تفصیل, action_taken as 'کارروائی', status as حالت, created_by as 'داخل کردہ', created_at as 'داخل کردہ تاریخ' FROM staff_monitoring WHERE date BETWEEN ? AND ?"
+        params = [start_date, end_date]
+        if filter_staff != "تمام":
+            query += " AND staff_name = ?"
+            params.append(filter_staff)
+        if filter_type != "تمام":
+            query += " AND note_type = ?"
+            params.append(filter_type)
+        query += " ORDER BY date DESC"
+        conn = get_db_connection()
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        if df.empty:
+            st.info("کوئی ریکارڈ موجود نہیں")
+        else:
+            st.dataframe(df, use_container_width=True)
+            csv = convert_df_to_csv(df)
+            st.download_button("📥 CSV ڈاؤن لوڈ کریں", csv, "staff_monitoring.csv", "text/csv")
+            html_report = generate_html_report(df, "عملہ نگرانی و شکایات رپورٹ")
+            st.download_button("📥 HTML رپورٹ ڈاؤن لوڈ کریں", html_report, "staff_monitoring_report.html", "text/html")
+            if st.button("🖨️ پرنٹ کریں"):
+                st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html_report}`);w.print();</script>", height=0)
+            with st.expander("⚠️ ریکارڈ حذف کریں"):
+                record_id = st.number_input("ریکارڈ ID درج کریں", min_value=1, step=1)
+                if st.button("حذف کریں"):
+                    conn = get_db_connection()
+                    conn.execute("DELETE FROM staff_monitoring WHERE id=?", (record_id,))
+                    conn.commit()
+                    conn.close()
+                    st.success("ریکارڈ حذف کر دیا گیا")
+                    st.rerun()
+
+# 3.5 ماہانہ رزلٹ کارڈ
+elif selected == "📜 ماہانہ رزلٹ کارڈ" and st.session_state.user_type == "admin":
+    st.header("📜 ماہانہ رزلٹ کارڈ")
+    conn = get_db_connection()
+    students_list = conn.execute("SELECT id, name, father_name, roll_no, dept FROM students").fetchall()
+    conn.close()
+    if not students_list:
         st.warning("کوئی طالب علم نہیں")
     else:
-        names = [f"{s['name']} ولد {s['father_name']} ({s['dept']})" for s in studs]
-        c1, c2, c3 = st.columns([3, 1, 1])
-        idx = c1.selectbox("طالب علم", range(len(names)), format_func=lambda i: names[i])
-        s = studs[idx]
-        d1 = c2.date_input("از", date.today().replace(day=1))
-        d2 = c3.date_input("تا", date.today())
-
-        if s["dept"] == "حفظ":
-            rows = query(
-                "SELECT rec_date AS تاریخ, attendance AS حاضری, "
-                "sabaq AS سبق, sabaq_lines AS ستر, "
-                "sq_text AS سبقی, sq_mistakes AS 'سبقی غلطی', "
-                "manzil_text AS منزل, manzil_mistakes AS 'منزل غلطی', "
-                "cleanliness AS صفائی, grade AS درجہ "
-                "FROM hifz_records WHERE student_id=? AND rec_date BETWEEN ? AND ? "
-                "ORDER BY rec_date",
-                (s["id"], str(d1), str(d2))
-            )
-        elif s["dept"] == "قاعدہ":
-            rows = query(
-                "SELECT rec_date AS تاریخ, attendance AS حاضری, "
-                "lesson_no AS سبق, total_lines AS لائنیں, "
-                "cleanliness AS صفائی, note AS نوٹ "
-                "FROM qaida_records WHERE student_id=? AND rec_date BETWEEN ? AND ? "
-                "ORDER BY rec_date",
-                (s["id"], str(d1), str(d2))
-            )
+        student_names = [f"{s[1]} ولد {s[2]} (شناختی نمبر: {s[3]}) - {s[4]}" for s in students_list]
+        sel = st.selectbox("طالب علم منتخب کریں", student_names)
+        parts = sel.split(" ولد ")
+        s_name = parts[0]
+        rest = parts[1]
+        f_name, rest2 = rest.split(" (شناختی نمبر: ")
+        roll_no, dept = rest2.split(") - ")
+        start = st.date_input("تاریخ آغاز", date.today().replace(day=1))
+        end = st.date_input("تاریخ اختتام", date.today())
+        student_id = [s[0] for s in students_list if s[1] == s_name and s[2] == f_name][0]
+        if dept == "حفظ":
+            conn = get_db_connection()
+            df = pd.read_sql_query("""SELECT r_date as تاریخ, attendance as حاضری, surah as 'سبق', lines as 'کل ستر',
+                                      sq_p as 'سبقی', sq_m as 'سبقی (غلطی)', sq_a as 'سبقی (اٹکن)',
+                                      m_p as 'منزل', m_m as 'منزل (غلطی)', m_a as 'منزل (اٹکن)',
+                                      cleanliness as صفائی
+                                      FROM hifz_records WHERE student_id=? AND r_date BETWEEN ? AND ?
+                                      ORDER BY r_date ASC""", conn, params=(student_id, start, end))
+            conn.close()
+            if not df.empty:
+                grades = []
+                for idx, row in df.iterrows():
+                    att = row['حاضری']
+                    sabaq_nagha = (row['سبق'] == "ناغہ" or row['سبق'] == "یاد نہیں")
+                    sq_nagha = (row['سبقی'] == "ناغہ" or row['سبقی'] == "یاد نہیں")
+                    m_nagha = (row['منزل'] == "ناغہ" or row['منزل'] == "یاد نہیں")
+                    sq_m = row['سبقی (غلطی)'] if pd.notna(row['سبقی (غلطی)']) else 0
+                    m_m = row['منزل (غلطی)'] if pd.notna(row['منزل (غلطی)']) else 0
+                    grade = calculate_grade_with_attendance(att, sabaq_nagha, sq_nagha, m_nagha, sq_m, m_m)
+                    grades.append(grade)
+                df['درجہ'] = grades
+                st.dataframe(df[['تاریخ', 'حاضری', 'سبق', 'سبقی', 'منزل', 'صفائی', 'درجہ']], use_container_width=True)
+                html = generate_html_report(df, "ماہانہ رزلٹ کارڈ (حفظ)", student_name=f"{s_name} ولد {f_name}",
+                                            start_date=start.strftime("%Y-%m-%d"), end_date=end.strftime("%Y-%m-%d"))
+                st.download_button("📥 HTML ڈاؤن لوڈ", html, f"{s_name}_result.html", "text/html")
+                if st.button("🖨️ پرنٹ کریں"):
+                    st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html}`);w.print();</script>", height=0)
+        elif dept == "قاعدہ":
+            conn = get_db_connection()
+            df = pd.read_sql_query("""SELECT r_date as تاریخ, lesson_no as 'تختی نمبر', total_lines as 'کل لائنیں',
+                                      details as تفصیل, attendance as حاضری, cleanliness as صفائی
+                                      FROM qaida_records WHERE student_id=? AND r_date BETWEEN ? AND ?
+                                      ORDER BY r_date ASC""", conn, params=(student_id, start, end))
+            conn.close()
+            if df.empty:
+                st.warning("کوئی ریکارڈ نہیں")
+            else:
+                st.dataframe(df, use_container_width=True)
+                html = generate_html_report(df, "ماہانہ رزلٹ کارڈ (قاعدہ)", student_name=f"{s_name} ولد {f_name}",
+                                            start_date=start.strftime("%Y-%m-%d"), end_date=end.strftime("%Y-%m-%d"))
+                st.download_button("📥 HTML ڈاؤن لوڈ", html, f"{s_name}_qaida_result.html", "text/html")
+                if st.button("🖨️ پرنٹ کریں"):
+                    st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html}`);w.print();</script>", height=0)
         else:
-            rows = query(
-                "SELECT rec_date AS تاریخ, attendance AS حاضری, "
-                "subject AS مضمون, lesson AS سبق, "
-                "performance AS کارکردگی, cleanliness AS صفائی "
-                "FROM general_records WHERE student_id=? AND dept=? "
-                "AND rec_date BETWEEN ? AND ? ORDER BY rec_date",
-                (s["id"], s["dept"], str(d1), str(d2))
-            )
+            conn = get_db_connection()
+            df = pd.read_sql_query("""SELECT r_date as تاریخ, book_subject as 'کتاب/مضمون', today_lesson as 'آج کا سبق',
+                                      homework as 'ہوم ورک', performance as کارکردگی, cleanliness as صفائی
+                                      FROM general_education WHERE student_id=? AND dept=? AND r_date BETWEEN ? AND ?
+                                      ORDER BY r_date ASC""", conn, params=(student_id, dept, start, end))
+            conn.close()
+            if not df.empty:
+                st.dataframe(df, use_container_width=True)
+                html = generate_html_report(df, "ماہانہ رزلٹ کارڈ", student_name=f"{s_name} ولد {f_name}",
+                                            start_date=start.strftime("%Y-%m-%d"), end_date=end.strftime("%Y-%m-%d"))
+                st.download_button("📥 HTML ڈاؤن لوڈ", html, f"{s_name}_result.html", "text/html")
+                if st.button("🖨️ پرنٹ کریں"):
+                    st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html}`);w.print();</script>", height=0)
 
-        if rows:
-            df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            sub = f"{s['name']} ولد {s['father_name']} | {d1} تا {d2}"
-            c1, c2 = st.columns(2)
-            c1.download_button(
-                "📥 HTML رپورٹ",
-                make_html_report(df, "ماہانہ رزلٹ کارڈ", sub),
-                f"result_{s['name']}.html", "text/html",
-            )
-            c2.download_button("📥 CSV", df_csv(df), f"result_{s['name']}.csv")
-        else:
-            st.info("اس مدت میں کوئی ریکارڈ نہیں")
-
-# ───────────────────────────────
-# PARA REPORT
-# ───────────────────────────────
-elif pg == "para" and IS_ADMIN:
-    section("📖", "پارہ تعلیمی رپورٹ")
-    studs = query(
-        "SELECT id,name,father_name FROM students "
-        "WHERE dept='حفظ' AND is_active=1 ORDER BY name"
-    )
-    if not studs:
+# 3.6 پارہ تعلیمی رپورٹ
+elif selected == "📘 پارہ تعلیمی رپورٹ" and st.session_state.user_type == "admin":
+    st.header("📘 پارہ تعلیمی رپورٹ")
+    conn = get_db_connection()
+    students_list = conn.execute("SELECT id, name, father_name FROM students WHERE dept='حفظ'").fetchall()
+    conn.close()
+    if not students_list:
         st.warning("کوئی حفظ کا طالب علم نہیں")
     else:
-        names = [f"{s['name']} ولد {s['father_name']}" for s in studs]
-        idx = st.selectbox("طالب علم", range(len(names)), format_func=lambda i: names[i])
-        s = studs[idx]
-        passed = query(
-            "SELECT id, para_no AS 'پارہ نمبر', passed_date AS 'تاریخ', "
-            "exam_type AS امتحان, grade AS گریڈ, marks AS نمبر "
-            "FROM passed_paras WHERE student_id=? AND para_no>0 ORDER BY para_no",
-            (s["id"],)
-        )
-        cnt = len(passed or [])
-        progress_bar(cnt, 30, "قرآن مجید کی پیشرفت (پارے)")
-        if passed:
-            df = pd.DataFrame(passed)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            with st.expander("🗑️ پارہ حذف کریں"):
-                with st.form("del_para_f"):
-                    di = st.number_input("ID", min_value=1, step=1)
-                    if st.form_submit_button("🗑️ حذف"):
-                        execute("DELETE FROM passed_paras WHERE id=?", (int(di),))
-                        st.success("✅")
-                        st.rerun()
-            st.download_button(
-                "📥 رپورٹ",
-                make_html_report(df, "پارہ تعلیمی رپورٹ",
-                                 f"{s['name']} ولد {s['father_name']}"),
-                f"para_{s['name']}.html", "text/html",
-            )
+        student_names = [f"{s[1]} ولد {s[2]}" for s in students_list]
+        sel = st.selectbox("طالب علم منتخب کریں", student_names)
+        s_name, f_name = sel.split(" ولد ")
+        student_id = [s[0] for s in students_list if s[1] == s_name and s[2] == f_name][0]
+        conn = get_db_connection()
+        passed_df = pd.read_sql_query("""SELECT para_no as 'پارہ نمبر', passed_date as 'تاریخ پاس', 
+                                         exam_type as 'امتحان قسم', grade as 'گریڈ', marks as 'نمبر'
+                                         FROM passed_paras WHERE student_id=? AND para_no IS NOT NULL
+                                         ORDER BY para_no""", conn, params=(student_id,))
+        conn.close()
+        if passed_df.empty:
+            st.info("اس طالب علم کا کوئی پاس شدہ پارہ نہیں")
         else:
-            st.info("کوئی پاس شدہ پارہ نہیں")
+            st.dataframe(passed_df, use_container_width=True)
+            html = generate_para_report(s_name, f_name, passed_df)
+            st.download_button("📥 رپورٹ ڈاؤن لوڈ کریں", html, f"Para_Report_{s_name}.html", "text/html")
+            if st.button("🖨️ پرنٹ کریں"):
+                st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html}`);w.print();</script>", height=0)
 
-# ───────────────────────────────
-# TEACHER ATTENDANCE ADMIN
-# ───────────────────────────────
-elif pg == "t_att_a" and IS_ADMIN:
-    section("🕒", "اساتذہ حاضری")
-    tab1, tab2 = st.tabs(["📋 ریکارڈ دیکھیں", "✏️ درج / ترمیم"])
+# 3.7 اساتذہ حاضری
+elif selected == "🕒 اساتذہ حاضری" and st.session_state.user_type == "admin":
+    st.header("اساتذہ حاضری ریکارڈ")
+    conn = get_db_connection()
+    df = pd.read_sql_query("SELECT a_date as تاریخ, t_name as استاد, arrival as آمد, departure as رخصت FROM t_attendance ORDER BY a_date DESC", conn)
+    conn.close()
+    st.dataframe(df, use_container_width=True)
 
+# 3.8 رخصت کی منظوری
+elif selected == "🏛️ رخصت کی منظوری" and st.session_state.user_type == "admin":
+    st.header("رخصت کی منظوری")
+    conn = get_db_connection()
+    try:
+        pending = conn.execute("SELECT id, t_name, l_type, reason, start_date, days FROM leave_requests WHERE status LIKE ?", ('%پینڈنگ%',)).fetchall()
+    except:
+        pending = []
+    conn.close()
+    if not pending:
+        st.info("کوئی پینڈنگ درخواست نہیں")
+    else:
+        for l_id, t_n, l_t, reas, s_d, dys in pending:
+            with st.expander(f"{t_n} | {l_t} | {dys} دن"):
+                st.write(f"وجہ: {reas}")
+                col1, col2 = st.columns(2)
+                if col1.button("✅ منظور", key=f"app_{l_id}"):
+                    conn = get_db_connection()
+                    conn.execute("UPDATE leave_requests SET status='منظور' WHERE id=?", (l_id,))
+                    conn.commit()
+                    conn.close()
+                    st.rerun()
+                if col2.button("❌ مسترد", key=f"rej_{l_id}"):
+                    conn = get_db_connection()
+                    conn.execute("UPDATE leave_requests SET status='مسترد' WHERE id=?", (l_id,))
+                    conn.commit()
+                    conn.close()
+                    st.rerun()
+
+# 3.9 یوزر مینجمنٹ
+elif selected == "👥 یوزر مینجمنٹ" and st.session_state.user_type == "admin":
+    st.header("👥 یوزر مینجمنٹ")
+    tab1, tab2 = st.tabs(["اساتذہ", "طلبہ"])
     with tab1:
-        c1, c2, c3 = st.columns(3)
-        fd1 = c1.date_input("از", date.today().replace(day=1))
-        fd2 = c2.date_input("تا", date.today())
-        tlist = ["تمام"] + [r["username"] for r in query(
-            "SELECT username FROM users WHERE role='teacher' AND is_active=1")]
-        ft = c3.selectbox("استاد", tlist)
-        tf = "" if ft == "تمام" else f" AND username='{ft}'"
-        rows = query(
-            f"SELECT id, username AS استاد, att_date AS تاریخ, "
-            f"arrival AS آمد, departure AS رخصت "
-            f"FROM teacher_attendance WHERE att_date BETWEEN ? AND ?{tf} "
-            f"ORDER BY att_date DESC",
-            (str(fd1), str(fd2))
-        )
-        if rows:
-            df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            with st.expander("🗑️ حذف"):
-                with st.form("del_att_f"):
-                    di = st.number_input("ID", min_value=1, step=1)
-                    if st.form_submit_button("🗑️ حذف"):
-                        execute("DELETE FROM teacher_attendance WHERE id=?", (int(di),))
-                        st.success("✅")
-                        st.rerun()
-            st.download_button("📥 CSV", df_csv(df), "att.csv")
+        st.subheader("موجودہ اساتذہ")
+        conn = get_db_connection()
+        columns = ["id", "name", "password", "dept", "phone", "address", "id_card", "joining_date"]
+        existing_cols = []
+        for col in columns:
+            if column_exists("teachers", col):
+                existing_cols.append(col)
+        query = f"SELECT {', '.join(existing_cols)} FROM teachers WHERE name!='admin'"
+        teachers_df = pd.read_sql_query(query, conn)
+        conn.close()
+        if not teachers_df.empty:
+            edited_teachers = st.data_editor(teachers_df, num_rows="dynamic", use_container_width=True, key="teachers_edit")
+            if st.button("اساتذہ میں تبدیلیاں محفوظ کریں"):
+                conn = get_db_connection()
+                c = conn.cursor()
+                old_ids = set(teachers_df['id'])
+                new_ids = set(edited_teachers['id']) if 'id' in edited_teachers.columns else set()
+                deleted_ids = old_ids - new_ids
+                for did in deleted_ids:
+                    c.execute("DELETE FROM teachers WHERE id=?", (did,))
+                for _, row in edited_teachers.iterrows():
+                    if pd.isna(row['id']) or row['id'] == 0 or row['id'] == '':
+                        col_names = [col for col in existing_cols if col != 'id']
+                        placeholders = ",".join(["?" for _ in col_names])
+                        values = [row[col] for col in col_names]
+                        if 'password' in col_names:
+                            pwd_index = col_names.index('password')
+                            if values[pwd_index]:
+                                values[pwd_index] = hash_password(values[pwd_index])
+                        c.execute(f"INSERT INTO teachers ({','.join(col_names)}) VALUES ({placeholders})", values)
+                    else:
+                        set_clause = ",".join([f"{col}=?" for col in existing_cols if col != 'id'])
+                        values = []
+                        for col in existing_cols:
+                            if col != 'id':
+                                val = row[col]
+                                if col == 'password' and val:
+                                    val = hash_password(val)
+                                values.append(val)
+                        values.append(row['id'])
+                        c.execute(f"UPDATE teachers SET {set_clause} WHERE id=?", values)
+                conn.commit()
+                conn.close()
+                st.success("تبدیلیاں محفوظ ہو گئیں")
+                st.rerun()
         else:
-            st.info("کوئی ریکارڈ نہیں")
-
-    with tab2:
-        with st.form("admin_att_f"):
-            c1, c2, c3, c4 = st.columns(4)
-            tl2 = [r["username"] for r in query(
-                "SELECT username FROM users WHERE role='teacher' AND is_active=1")]
-            at = c1.selectbox("استاد", tl2) if tl2 else c1.text_input("استاد")
-            ad = c2.date_input("تاریخ", date.today())
-            arr = c3.text_input("آمد", "09:00 AM")
-            dep = c4.text_input("رخصت", "03:00 PM")
-            if st.form_submit_button("💾 محفوظ کریں"):
-                ex = query(
-                    "SELECT id FROM teacher_attendance WHERE username=? AND att_date=?",
-                    (at, str(ad)), one=True,
-                )
-                if ex:
-                    execute(
-                        "UPDATE teacher_attendance SET arrival=?,departure=? "
-                        "WHERE username=? AND att_date=?",
-                        (arr, dep, at, str(ad)),
-                    )
-                else:
-                    try:
-                        execute(
-                            "INSERT INTO teacher_attendance(username,att_date,arrival,departure) "
-                            "VALUES(?,?,?,?)",
-                            (at, str(ad), arr, dep),
-                        )
-                    except:
-                        pass
-                st.success("✅ محفوظ!")
-                st.rerun()
-
-# ───────────────────────────────
-# LEAVES ADMIN
-# ───────────────────────────────
-elif pg == "leaves" and IS_ADMIN:
-    section("🏛️", "رخصت کی منظوری")
-    tab1, tab2 = st.tabs(["⏳ پینڈنگ", "📜 تمام"])
-
-    with tab1:
-        pend = query(
-            "SELECT * FROM leave_requests WHERE status='پینڈنگ' "
-            "ORDER BY created_at DESC"
-        )
-        if not pend:
-            st.success("✅ کوئی پینڈنگ درخواست نہیں")
-        for lv in (pend or []):
-            st.markdown(
-                f'<div class="lv-card">'
-                f'<div style="display:flex;justify-content:space-between">'
-                f'<b>👤 {lv["username"]}</b>&nbsp;'
-                f'<span class="sp">{lv["leave_type"]}</span>'
-                f'<span style="font-size:.75rem;color:#5a6e64">'
-                f'📅 {lv["start_date"]} | {lv["days"]} دن</span></div>'
-                f'<p style="font-size:.78rem;color:#374151;margin:5px 0 0">'
-                f'وجہ: {lv["reason"][:120]}</p></div>',
-                unsafe_allow_html=True,
-            )
-            c1, c2, c3 = st.columns(3)
-            if c1.button("✅ منظور", key=f"ap_{lv['id']}", use_container_width=True):
-                execute("UPDATE leave_requests SET status='منظور' WHERE id=?", (lv["id"],))
-                st.rerun()
-            if c2.button("❌ مسترد", key=f"rj_{lv['id']}", use_container_width=True):
-                execute("UPDATE leave_requests SET status='مسترد' WHERE id=?", (lv["id"],))
-                st.rerun()
-            if c3.button("🗑️ حذف", key=f"dl_{lv['id']}", use_container_width=True):
-                execute("DELETE FROM leave_requests WHERE id=?", (lv["id"],))
-                st.rerun()
-
-    with tab2:
-        all_lv = query(
-            "SELECT id, username AS استاد, leave_type AS نوعیت, "
-            "start_date AS تاریخ, days AS دن, status AS حالت "
-            "FROM leave_requests ORDER BY created_at DESC"
-        )
-        if all_lv:
-            df = pd.DataFrame(all_lv)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-            with st.expander("🗑️ حذف"):
-                with st.form("del_lv_f"):
-                    di = st.number_input("ID", min_value=1, step=1)
-                    if st.form_submit_button("🗑️ حذف"):
-                        execute("DELETE FROM leave_requests WHERE id=?", (int(di),))
-                        st.success("✅")
-                        st.rerun()
-            st.download_button("📥 CSV", df_csv(df), "leaves.csv")
-
-# ───────────────────────────────
-# USER MANAGEMENT
-# ───────────────────────────────
-elif pg == "users" and IS_ADMIN:
-    section("👥", "یوزر مینجمنٹ")
-    tab1, tab2 = st.tabs(["👩‍🏫 اساتذہ", "👨‍🎓 طلبہ"])
-
-    with tab1:
-        rows = query(
-            "SELECT id, username AS نام, dept AS شعبہ, phone AS فون, "
-            "id_card AS شناختی, joining_date AS شمولیت, is_active AS فعال "
-            "FROM users WHERE role='teacher' ORDER BY username"
-        )
-        if rows:
-            df = pd.DataFrame(rows)
-            edited = st.data_editor(
-                df, use_container_width=True,
-                num_rows="dynamic", key="te", hide_index=True,
-            )
-            if st.button("💾 اساتذہ کی تبدیلیاں محفوظ کریں"):
-                for _, row in edited.iterrows():
-                    if pd.notna(row.get("id")):
-                        execute(
-                            "UPDATE users SET dept=?,phone=?,id_card=?,"
-                            "joining_date=?,is_active=? WHERE id=?",
-                            (str(row.get("شعبہ", "")),
-                             str(row.get("فون", "")),
-                             str(row.get("شناختی", "")),
-                             str(row.get("شمولیت", "")),
-                             int(row.get("فعال", 1)),
-                             int(row["id"])),
-                        )
-                st.success("✅ محفوظ!")
-                st.rerun()
-
+            st.info("کوئی استاد موجود نہیں")
         with st.expander("➕ نیا استاد رجسٹر کریں"):
-            with st.form("add_t_f"):
-                c1, c2 = st.columns(2)
-                tn  = c1.text_input("نام*")
-                tp  = c2.text_input("پاسورڈ*", type="password")
-                td  = c1.selectbox("شعبہ", DEPTS)
-                tph = c2.text_input("فون")
-                tic = c1.text_input("شناختی کارڈ")
-                tjd = c2.date_input("شمولیت", date.today())
-                if st.form_submit_button("✅ رجسٹر کریں"):
-                    if tn.strip() and tp:
+            with st.form("new_teacher_form"):
+                name = st.text_input("استاد کا نام*")
+                password = st.text_input("پاسورڈ*", type="password")
+                dept = st.selectbox("شعبہ", ["حفظ", "قاعدہ", "درسِ نظامی", "عصری تعلیم"])
+                phone = st.text_input("فون نمبر")
+                address = st.text_area("پتہ")
+                id_card = st.text_input("شناختی کارڈ نمبر")
+                joining_date = st.date_input("تاریخ شمولیت", date.today())
+                photo = st.file_uploader("تصویر (اختیاری)", type=["jpg", "png", "jpeg"])
+                if st.form_submit_button("رجسٹر کریں"):
+                    if name and password:
+                        conn = get_db_connection()
+                        c = conn.cursor()
                         try:
-                            execute(
-                                "INSERT INTO users(username,password,role,dept,phone,"
-                                "id_card,joining_date) VALUES(?,?,?,?,?,?,?)",
-                                (tn.strip(), make_hash(tp), "teacher",
-                                 td, tph, tic, str(tjd)),
-                            )
-                            log_action(st.session_state.username, "Teacher Added", tn)
-                            st.success(f"✅ {tn} رجسٹر!")
+                            photo_path = None
+                            if photo:
+                                os.makedirs("uploads", exist_ok=True)
+                                photo_path = f"uploads/teacher_{name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+                                with open(photo_path, "wb") as f:
+                                    f.write(photo.getbuffer())
+                            c.execute("INSERT INTO teachers (name, password, dept, phone, address, id_card, joining_date, photo) VALUES (?,?,?,?,?,?,?,?)",
+                                      (name, hash_password(password), dept, phone, address, id_card, joining_date, photo_path))
+                            conn.commit()
+                            st.success("استاد کامیابی سے رجسٹر ہو گیا")
                             st.rerun()
-                        except Exception as e:
+                        except sqlite3.IntegrityError:
                             st.error("یہ نام پہلے سے موجود ہے")
+                        finally:
+                            conn.close()
                     else:
                         st.error("نام اور پاسورڈ ضروری ہیں")
-
-        with st.expander("🗑️ استاد حذف کریں"):
-            with st.form("del_t_f"):
-                di = st.number_input("استاد ID", min_value=1, step=1)
-                if st.form_submit_button("🗑️ حذف کریں"):
-                    execute(
-                        "DELETE FROM users WHERE id=? AND role='teacher'",
-                        (int(di),),
-                    )
-                    st.success("✅ حذف!")
-                    st.rerun()
-
     with tab2:
-        rows = query(
-            "SELECT id, name AS نام, father_name AS والد, roll_no AS رول, "
-            "dept AS شعبہ, teacher AS استاد, phone AS فون, is_active AS فعال "
-            "FROM students ORDER BY name"
-        )
-        if rows:
-            df = pd.DataFrame(rows)
-            edited = st.data_editor(
-                df, use_container_width=True,
-                num_rows="dynamic", key="se", hide_index=True,
-            )
-            if st.button("💾 طلبہ کی تبدیلیاں محفوظ کریں"):
-                for _, row in edited.iterrows():
-                    if pd.notna(row.get("id")):
-                        execute(
-                            "UPDATE students SET name=?,father_name=?,roll_no=?,"
-                            "dept=?,teacher=?,phone=?,is_active=? WHERE id=?",
-                            (str(row.get("نام", "")),
-                             str(row.get("والد", "")),
-                             str(row.get("رول", "")),
-                             str(row.get("شعبہ", "")),
-                             str(row.get("استاد", "")),
-                             str(row.get("فون", "")),
-                             int(row.get("فعال", 1)),
-                             int(row["id"])),
-                        )
-                st.success("✅ محفوظ!")
-                st.rerun()
-
-        with st.expander("➕ نیا طالب علم داخل کریں"):
-            with st.form("add_s_f"):
-                c1, c2 = st.columns(2)
-                sn   = c1.text_input("نام*")
-                sf   = c2.text_input("والد کا نام*")
-                sm   = c1.text_input("والدہ کا نام")
-                sr   = c2.text_input("رول نمبر")
-                sd   = c1.date_input("تاریخ پیدائش", date.today() - timedelta(days=3650))
-                sa   = c2.date_input("تاریخ داخلہ", date.today())
-                sdept = c1.selectbox("شعبہ*", DEPTS)
-                tl   = [r["username"] for r in query(
-                    "SELECT username FROM users WHERE role='teacher' AND is_active=1")]
-                st_ = c2.selectbox("استاد*", tl) if tl else c2.text_input("استاد*")
-                scl  = c1.text_input("کلاس")
-                ssec = c2.text_input("سیکشن")
-                sph  = c1.text_input("فون")
-                sadr = st.text_area("پتہ")
-                if st.form_submit_button("✅ داخلہ کریں"):
-                    if sn.strip() and sf.strip():
-                        execute(
-                            "INSERT INTO students(name,father_name,mother_name,roll_no,"
-                            "dob,admission_date,phone,address,teacher,dept,"
-                            "class_name,section) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                            (sn.strip(), sf.strip(), sm, sr,
-                             str(sd), str(sa), sph, sadr, st_, sdept, scl, ssec),
-                        )
-                        log_action(st.session_state.username, "Student Added", sn)
-                        st.success(f"✅ {sn} داخل!")
-                        st.rerun()
+        st.subheader("موجودہ طلبہ (شناختی نمبر تبدیل کریں)")
+        conn = get_db_connection()
+        all_columns = ["id", "name", "father_name", "mother_name", "dob", "admission_date", "exit_date", "exit_reason",
+                       "id_card", "phone", "address", "teacher_name", "dept", "class", "section", "roll_no"]
+        existing_cols = []
+        for col in all_columns:
+            if column_exists("students", col):
+                existing_cols.append(col)
+        query = f"SELECT {', '.join(existing_cols)} FROM students"
+        students_df = pd.read_sql_query(query, conn)
+        conn.close()
+        if not students_df.empty:
+            edited_students = st.data_editor(students_df, num_rows="dynamic", use_container_width=True, key="students_edit")
+            if st.button("طلبہ میں تبدیلیاں محفوظ کریں"):
+                conn = get_db_connection()
+                c = conn.cursor()
+                old_ids = set(students_df['id'])
+                new_ids = set(edited_students['id']) if 'id' in edited_students.columns else set()
+                deleted_ids = old_ids - new_ids
+                for did in deleted_ids:
+                    c.execute("DELETE FROM students WHERE id=?", (did,))
+                for _, row in edited_students.iterrows():
+                    if pd.isna(row['id']) or row['id'] == 0 or row['id'] == '':
+                        col_names = [col for col in existing_cols if col != 'id']
+                        placeholders = ",".join(["?" for _ in col_names])
+                        values = []
+                        for col in col_names:
+                            val = row[col]
+                            if col in ['dob', 'admission_date', 'exit_date']:
+                                if pd.notna(val) and val:
+                                    if isinstance(val, (date, datetime)):
+                                        val = val.strftime("%Y-%m-%d")
+                                    else:
+                                        val = str(val)
+                                else:
+                                    val = None
+                            values.append(val)
+                        c.execute(f"INSERT INTO students ({','.join(col_names)}) VALUES ({placeholders})", values)
                     else:
-                        st.error("نام اور والد کا نام ضروری ہیں")
+                        set_clause = ",".join([f"{col}=?" for col in existing_cols if col != 'id'])
+                        values = []
+                        for col in existing_cols:
+                            if col != 'id':
+                                val = row[col]
+                                if col in ['dob', 'admission_date', 'exit_date']:
+                                    if pd.notna(val) and val:
+                                        if isinstance(val, (date, datetime)):
+                                            val = val.strftime("%Y-%m-%d")
+                                        else:
+                                            val = str(val)
+                                    else:
+                                        val = None
+                                values.append(val)
+                        values.append(row['id'])
+                        c.execute(f"UPDATE students SET {set_clause} WHERE id=?", values)
+                conn.commit()
+                conn.close()
+                st.success("تبدیلیاں محفوظ ہو گئیں")
+                st.rerun()
+        else:
+            st.info("کوئی طالب علم موجود نہیں")
+        with st.expander("➕ نیا طالب علم داخل کریں"):
+            with st.form("new_student_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    name = st.text_input("طالب علم کا نام*")
+                    father = st.text_input("والد کا نام*")
+                    mother = st.text_input("والدہ کا نام")
+                    dob = st.date_input("تاریخ پیدائش", date.today() - timedelta(days=365*10))
+                    admission_date = st.date_input("تاریخ داخلہ", date.today())
+                    roll_no = st.text_input("شناختی نمبر (اختیاری)", placeholder="مثلاً: 2024-001")
+                with col2:
+                    dept = st.selectbox("شعبہ*", ["حفظ", "قاعدہ", "درسِ نظامی", "عصری تعلیم"])
+                    class_name = st.text_input("کلاس (عصری تعلیم کے لیے)")
+                    section = st.text_input("سیکشن")
+                    conn = get_db_connection()
+                    teachers_list = [t[0] for t in conn.execute("SELECT name FROM teachers WHERE name!='admin'").fetchall()]
+                    conn.close()
+                    teacher = st.selectbox("استاد*", teachers_list) if teachers_list else st.text_input("استاد کا نام*")
+                id_card = st.text_input("B-Form / شناختی کارڈ نمبر")
+                phone = st.text_input("فون نمبر")
+                address = st.text_area("پتہ")
+                photo = st.file_uploader("تصویر (اختیاری)", type=["jpg", "png", "jpeg"])
+                st.markdown("---")
+                st.markdown("**اگر طالب علم مدرسہ چھوڑ چکا ہے تو درج ذیل معلومات بھریں (ورنہ خالی چھوڑیں):**")
+                exit_date = st.date_input("تاریخ خارج", value=None)
+                exit_reason = st.text_area("وجہ خارج")
+                if st.form_submit_button("داخلہ کریں"):
+                    if name and father and teacher and dept:
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        try:
+                            photo_path = None
+                            if photo:
+                                os.makedirs("uploads", exist_ok=True)
+                                photo_path = f"uploads/student_{name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+                                with open(photo_path, "wb") as f:
+                                    f.write(photo.getbuffer())
+                            c.execute("""INSERT INTO students 
+                                        (name, father_name, mother_name, dob, admission_date, exit_date, exit_reason,
+                                         id_card, phone, address, teacher_name, dept, class, section, photo, roll_no)
+                                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                      (name, father, mother, dob, admission_date, exit_date, exit_reason,
+                                       id_card, phone, address, teacher, dept, class_name, section, photo_path, roll_no))
+                            conn.commit()
+                            st.success("طالب علم کامیابی سے داخل ہو گیا")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"خرابی: {str(e)}")
+                        finally:
+                            conn.close()
+                    else:
+                        st.error("نام، ولدیت، استاد اور شعبہ ضروری ہیں")
 
-        with st.expander("🗑️ طالب علم حذف کریں"):
-            with st.form("del_s_f"):
-                di = st.number_input("طالب علم ID", min_value=1, step=1)
-                if st.form_submit_button("🗑️ حذف کریں"):
-                    execute("DELETE FROM students WHERE id=?", (int(di),))
-                    st.success("✅ حذف!")
-                    st.rerun()
-
-# ───────────────────────────────
-# TIMETABLE
-# ───────────────────────────────
-elif pg == "timetab" and IS_ADMIN:
-    section("📚", "ٹائم ٹیبل")
-    tl = [r["username"] for r in query(
-        "SELECT username FROM users WHERE role='teacher' AND is_active=1")]
-    if not tl:
+# 3.10 ٹائم ٹیبل مینجمنٹ
+elif selected == "📚 ٹائم ٹیبل مینجمنٹ" and st.session_state.user_type == "admin":
+    st.header("📚 ٹائم ٹیبل مینجمنٹ")
+    conn = get_db_connection()
+    teachers = [t[0] for t in conn.execute("SELECT name FROM teachers WHERE name!='admin'").fetchall()]
+    conn.close()
+    if not teachers:
         st.warning("پہلے اساتذہ رجسٹر کریں")
     else:
-        st_ = st.selectbox("استاد منتخب کریں", tl)
-        tt = query(
-            "SELECT id, day_name AS دن, period AS وقت, "
-            "subject AS مضمون, room AS کمرہ "
-            "FROM timetable WHERE teacher=? ORDER BY day_name,period",
-            (st_,)
-        )
-        if tt:
-            df = pd.DataFrame(tt)
-            edited = st.data_editor(
-                df, use_container_width=True, num_rows="dynamic",
-                key="tte", hide_index=True,
-            )
-            c1, c2 = st.columns(2)
-            if c1.button("💾 محفوظ کریں"):
-                for _, row in edited.iterrows():
-                    if pd.notna(row.get("id")):
-                        execute(
-                            "UPDATE timetable SET day_name=?,period=?,subject=?,room=? WHERE id=?",
-                            (str(row.get("دن", "")), str(row.get("وقت", "")),
-                             str(row.get("مضمون", "")), str(row.get("کمرہ", "")),
-                             int(row["id"])),
-                        )
-                    elif pd.isna(row.get("id")) or not row.get("id"):
-                        if str(row.get("دن", "")).strip():
-                            execute(
-                                "INSERT INTO timetable(teacher,day_name,period,subject,room) "
-                                "VALUES(?,?,?,?,?)",
-                                (st_, str(row.get("دن", "")), str(row.get("وقت", "")),
-                                 str(row.get("مضمون", "")), str(row.get("کمرہ", ""))),
-                            )
-                st.success("✅ محفوظ!")
-                st.rerun()
-            if c2.button("🗑️ مکمل حذف کریں"):
-                execute("DELETE FROM timetable WHERE teacher=?", (st_,))
-                st.rerun()
-        else:
-            st.info("کوئی ٹائم ٹیبل نہیں")
-
+        sel_t = st.selectbox("استاد منتخب کریں", teachers)
+        conn = get_db_connection()
+        tt_df = pd.read_sql_query("SELECT id, day as دن, period as وقت, book as کتاب, room as کمرہ FROM timetable WHERE t_name=?", conn, params=(sel_t,))
+        conn.close()
+        if not tt_df.empty:
+            st.subheader("موجودہ ٹائم ٹیبل")
+            day_order = {"ہفتہ": 0, "اتوار": 1, "پیر": 2, "منگل": 3, "بدھ": 4, "جمعرات": 5}
+            tt_df['day_order'] = tt_df['دن'].map(day_order)
+            tt_df = tt_df.sort_values(['day_order', 'وقت'])
+            st.dataframe(tt_df[['دن', 'وقت', 'کتاب', 'کمرہ']], use_container_width=True)
         with st.expander("➕ نیا پیریڈ شامل کریں"):
-            with st.form("add_per_f"):
-                c1, c2, c3, c4 = st.columns(4)
-                dn  = c1.selectbox("دن", DAYS_UR)
-                per = c2.text_input("وقت", "08:00-09:00")
-                sub = c3.text_input("مضمون")
-                rm  = c4.text_input("کمرہ")
-                if st.form_submit_button("➕ شامل کریں"):
-                    execute(
-                        "INSERT INTO timetable(teacher,day_name,period,subject,room) "
-                        "VALUES(?,?,?,?,?)",
-                        (st_, dn, per, sub, rm),
-                    )
-                    st.success("✅ شامل!")
+            with st.form("add_period"):
+                col1, col2 = st.columns(2)
+                day = col1.selectbox("دن", ["ہفتہ", "اتوار", "پیر", "منگل", "بدھ", "جمعرات"])
+                period = col2.text_input("وقت (مثلاً 08:00-09:00)")
+                book = st.text_input("کتاب / مضمون")
+                room = st.text_input("کمرہ نمبر")
+                if st.form_submit_button("شامل کریں"):
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute("INSERT INTO timetable (t_name, day, period, book, room) VALUES (?,?,?,?,?)",
+                              (sel_t, day, period, book, room))
+                    conn.commit()
+                    conn.close()
+                    st.success("پیریڈ شامل کر دیا گیا")
+                    st.rerun()
+        if not tt_df.empty:
+            with st.expander("🔄 پورے ہفتے میں نقل کریں"):
+                source_day = st.selectbox("منبع دن", ["ہفتہ", "اتوار", "پیر", "منگل", "بدھ", "جمعرات"], key="copy_source")
+                target_days = st.multiselect("نقل کرنے کے لیے دن", ["ہفتہ", "اتوار", "پیر", "منگل", "بدھ", "جمعرات"], default=["ہفتہ", "اتوار", "پیر", "منگل", "بدھ", "جمعرات"])
+                if st.button("نقل کریں"):
+                    conn = get_db_connection()
+                    source_periods = conn.execute("SELECT period, book, room FROM timetable WHERE t_name=? AND day=?", (sel_t, source_day)).fetchall()
+                    if source_periods:
+                        for d in target_days:
+                            conn.execute("DELETE FROM timetable WHERE t_name=? AND day=?", (sel_t, d))
+                        for d in target_days:
+                            for period, book, room in source_periods:
+                                conn.execute("INSERT INTO timetable (t_name, day, period, book, room) VALUES (?,?,?,?,?)",
+                                            (sel_t, d, period, book, room))
+                        conn.commit()
+                        st.success(f"{source_day} کے پیریڈز {', '.join(target_days)} میں نقل ہو گئے")
+                    else:
+                        st.warning(f"{source_day} کے لیے کوئی پیریڈ نہیں")
+                    conn.close()
                     st.rerun()
 
-# ───────────────────────────────
-# STAFF MONITORING
-# ───────────────────────────────
-elif pg == "monitor" and IS_ADMIN:
-    section("🔍", "عملہ نگرانی")
-    tab1, tab2 = st.tabs(["➕ نیا اندراج", "📜 ریکارڈ"])
-
-    with tab1:
-        tl = [r["username"] for r in query(
-            "SELECT username FROM users WHERE role='teacher' AND is_active=1")]
-        with st.form("mon_f"):
-            c1, c2 = st.columns(2)
-            stf = c1.selectbox("عملہ", tl) if tl else c1.text_input("عملہ")
-            nd  = c2.date_input("تاریخ", date.today())
-            nt  = c1.selectbox("نوعیت", ["یادداشت","شکایت","تنبیہ","تعریف","جائزہ"])
-            ns  = c2.selectbox("حالت", ["زیر التواء","حل شدہ","زیر غور"])
-            desc = st.text_area("تفصیل*", max_chars=1000)
-            act  = st.text_area("کارروائی", max_chars=500)
-            if st.form_submit_button("✅ محفوظ کریں"):
-                if desc.strip():
-                    execute(
-                        "INSERT INTO staff_notes(staff,note_date,note_type,description,"
-                        "action_taken,status,created_by) VALUES(?,?,?,?,?,?,?)",
-                        (stf, str(nd), nt, desc, act, ns, st.session_state.username),
-                    )
-                    st.success("✅ محفوظ!")
+# 3.11 پاسورڈ تبدیل کریں
+elif selected == "🔑 پاسورڈ تبدیل کریں":
+    st.header("🔑 پاسورڈ تبدیل کریں")
+    if st.session_state.user_type == "admin":
+        conn = get_db_connection()
+        teachers = [t[0] for t in conn.execute("SELECT name FROM teachers WHERE name!='admin'").fetchall()]
+        conn.close()
+        if teachers:
+            selected_teacher = st.selectbox("استاد منتخب کریں", teachers)
+            new_pass = st.text_input("نیا پاسورڈ", type="password")
+            confirm_pass = st.text_input("پاسورڈ کی تصدیق کریں", type="password")
+            if st.button("پاسورڈ تبدیل کریں"):
+                if new_pass and new_pass == confirm_pass:
+                    admin_reset_password(selected_teacher, new_pass)
+                    st.success(f"{selected_teacher} کا پاسورڈ تبدیل کر دیا گیا")
+                else:
+                    st.error("پاسورڈ میل نہیں کھاتے")
+        else:
+            st.info("کوئی دوسرا استاد موجود نہیں")
+    else:
+        old_pass = st.text_input("پرانا پاسورڈ", type="password")
+        new_pass = st.text_input("نیا پاسورڈ", type="password")
+        confirm_pass = st.text_input("نیا پاسورڈ دوبارہ", type="password")
+        if st.button("اپنا پاسورڈ تبدیل کریں"):
+            if old_pass and new_pass and new_pass == confirm_pass:
+                if change_password(st.session_state.username, old_pass, new_pass):
+                    st.success("پاسورڈ تبدیل ہو گیا۔ براہ کرم دوبارہ لاگ ان کریں")
+                    st.session_state.logged_in = False
                     st.rerun()
                 else:
-                    st.error("تفصیل ضروری ہے")
+                    st.error("پرانا پاسورڈ غلط ہے")
+            else:
+                st.error("نیا پاسورڈ اور تصدیق ایک جیسی ہونی چاہیے")
 
-    with tab2:
-        notes = query(
-            "SELECT id, staff AS عملہ, note_date AS تاریخ, note_type AS نوعیت, "
-            "description AS تفصیل, status AS حالت "
-            "FROM staff_notes ORDER BY note_date DESC"
-        )
-        if notes:
-            df = pd.DataFrame(notes)
-            edited = st.data_editor(
-                df, use_container_width=True, num_rows="dynamic",
-                key="notes_e", hide_index=True,
-            )
-            if st.button("💾 تبدیلیاں محفوظ کریں"):
-                for _, row in edited.iterrows():
-                    if pd.notna(row.get("id")):
-                        execute(
-                            "UPDATE staff_notes SET status=? WHERE id=?",
-                            (str(row.get("حالت", "")), int(row["id"])),
-                        )
-                st.success("✅")
-                st.rerun()
-            with st.expander("🗑️ حذف"):
-                with st.form("del_note_f"):
-                    di = st.number_input("ID", min_value=1, step=1)
-                    if st.form_submit_button("🗑️ حذف"):
-                        execute("DELETE FROM staff_notes WHERE id=?", (int(di),))
-                        st.success("✅")
-                        st.rerun()
-            st.download_button("📥 CSV", df_csv(df), "notes.csv")
-        else:
-            st.info("کوئی ریکارڈ نہیں")
+# 3.12 نوٹیفیکیشنز
+elif selected == "📢 نوٹیفیکیشنز":
+    st.header("نوٹیفیکیشن سینٹر")
+    if st.session_state.user_type == "admin":
+        with st.form("new_notif"):
+            title = st.text_input("عنوان")
+            msg = st.text_area("پیغام")
+            target = st.selectbox("بھیجیں", ["تمام", "اساتذہ", "طلبہ"])
+            if st.form_submit_button("بھیجیں"):
+                conn = get_db_connection()
+                conn.execute("INSERT INTO notifications (title, message, target, created_at) VALUES (?,?,?,?)",
+                             (title, msg, target, datetime.now()))
+                conn.commit()
+                conn.close()
+                st.success("نوٹیفکیشن بھیج دیا گیا")
+    conn = get_db_connection()
+    if st.session_state.user_type == "admin":
+        notifs = conn.execute("SELECT title, message, created_at FROM notifications ORDER BY created_at DESC LIMIT 10").fetchall()
+    else:
+        notifs = conn.execute("SELECT title, message, created_at FROM notifications WHERE target IN ('تمام','اساتذہ') ORDER BY created_at DESC LIMIT 10").fetchall()
+    conn.close()
+    for n in notifs:
+        st.info(f"**{n[0]}**\n\n{n[1]}\n\n*{n[2]}*")
 
-# ───────────────────────────────
-# NOTIFICATIONS
-# ───────────────────────────────
-elif pg == "notifs":
-    section("📢", "اعلانات")
-    if IS_ADMIN:
-        with st.expander("➕ نیا اعلان بھیجیں"):
-            with st.form("nf_f"):
-                t_ = st.text_input("عنوان*")
-                m_ = st.text_area("پیغام*")
-                tg = st.selectbox("وصول کنندہ", ["تمام","اساتذہ","طلبہ"])
-                if st.form_submit_button("📤 بھیجیں"):
-                    if t_.strip() and m_.strip():
-                        execute(
-                            "INSERT INTO notifications(title,message,target,created_by) "
-                            "VALUES(?,?,?,?)",
-                            (t_, m_, tg, st.session_state.username),
-                        )
-                        st.success("✅ بھیج دیا!")
-                        st.rerun()
+# 3.13 تجزیہ و رپورٹس
+elif selected == "📈 تجزیہ و رپورٹس" and st.session_state.user_type == "admin":
+    st.header("تجزیہ")
+    conn = get_db_connection()
+    df = pd.read_sql_query("SELECT a_date as تاریخ FROM t_attendance", conn)
+    if not df.empty:
+        fig = px.bar(df, x='تاریخ', title="اساتذہ کی حاضری")
+        st.plotly_chart(fig)
+    conn.close()
+
+# 3.14 ماہانہ بہترین طلباء
+elif selected == "🏆 ماہانہ بہترین طلباء" and st.session_state.user_type == "admin":
+    st.markdown("<div class='main-header'><h1>🏆 ماہانہ بہترین طلباء</h1><p>تعلیمی اور صفائی کی بنیاد پر بہترین کارکردگی</p></div>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        month_year = st.date_input("مہینہ منتخب کریں", date.today().replace(day=1), key="month_picker")
+    start_date = month_year.replace(day=1)
+    if month_year.month == 12:
+        end_date = month_year.replace(year=month_year.year+1, month=1, day=1) - timedelta(days=1)
+    else:
+        end_date = month_year.replace(month=month_year.month+1, day=1) - timedelta(days=1)
+    
+    st.markdown(f"### 📅 {start_date.strftime('%B %Y')} کے لیے نتائج")
+    
+    conn = get_db_connection()
+    students = conn.execute("SELECT id, name, father_name, roll_no, dept FROM students").fetchall()
+    conn.close()
+    
+    if not students:
+        st.warning("کوئی طالب علم موجود نہیں")
+    else:
+        student_scores = []
+        for sid, name, father, roll, dept in students:
+            conn = get_db_connection()
+            if dept == "حفظ":
+                records = conn.execute("""
+                    SELECT attendance, surah, sq_p, m_p, sq_m, m_m 
+                    FROM hifz_records 
+                    WHERE student_id=? AND r_date BETWEEN ? AND ?
+                """, (sid, start_date, end_date)).fetchall()
+                grade_scores = []
+                for rec in records:
+                    att = rec[0]
+                    sabaq_nagha = (rec[1] == "ناغہ" or rec[1] == "یاد نہیں")
+                    sq_nagha = (rec[2] == "ناغہ" or rec[2] == "یاد نہیں")
+                    m_nagha = (rec[3] == "ناغہ" or rec[3] == "یاد نہیں")
+                    sq_m = rec[4] if rec[4] else 0
+                    m_m = rec[5] if rec[5] else 0
+                    grade = calculate_grade_with_attendance(att, sabaq_nagha, sq_nagha, m_nagha, sq_m, m_m)
+                    if grade == "ممتاز":
+                        grade_scores.append(100)
+                    elif grade == "جید جداً":
+                        grade_scores.append(85)
+                    elif grade == "جید":
+                        grade_scores.append(75)
+                    elif grade == "مقبول":
+                        grade_scores.append(60)
+                    elif grade == "دوبارہ کوشش کریں":
+                        grade_scores.append(40)
+                    elif grade == "ناقص (ناغہ)":
+                        grade_scores.append(30)
+                    elif grade == "کمزور (ناغہ)":
+                        grade_scores.append(20)
+                    elif grade == "ناکام (مکمل ناغہ)":
+                        grade_scores.append(10)
+                    elif grade == "غیر حاضر":
+                        grade_scores.append(0)
+                    elif grade == "رخصت":
+                        grade_scores.append(50)
+                avg_grade = sum(grade_scores)/len(grade_scores) if grade_scores else 0
+                clean_records = conn.execute("SELECT cleanliness FROM hifz_records WHERE student_id=? AND r_date BETWEEN ? AND ? AND cleanliness IS NOT NULL", (sid, start_date, end_date)).fetchall()
+                clean_scores = [cleanliness_to_score(c[0]) for c in clean_records if c[0]]
+                avg_clean = sum(clean_scores)/len(clean_scores) if clean_scores else 0
+                
+            elif dept == "قاعدہ":
+                records = conn.execute("SELECT attendance FROM qaida_records WHERE student_id=? AND r_date BETWEEN ? AND ?", (sid, start_date, end_date)).fetchall()
+                grade_scores = []
+                for rec in records:
+                    att = rec[0]
+                    if att == "حاضر":
+                        grade_scores.append(85)
+                    elif att == "رخصت":
+                        grade_scores.append(50)
                     else:
-                        st.error("عنوان اور پیغام ضروری ہیں")
-        with st.expander("🗑️ اعلان حذف کریں"):
-            with st.form("del_nf_f"):
-                di = st.number_input("ID", min_value=1, step=1)
-                if st.form_submit_button("🗑️ حذف"):
-                    execute("DELETE FROM notifications WHERE id=?", (int(di),))
-                    st.success("✅")
-                    st.rerun()
-
-    notifs = query(
-        "SELECT id, title, message, target, created_by, created_at "
-        "FROM notifications ORDER BY created_at DESC LIMIT 30"
-    )
-    if notifs:
-        for n in notifs:
-            st.markdown(
-                f'<div class="nf-card">'
-                f'<h5>🔔 {n["title"]}'
-                f'<small style="font-weight:400"> ({n["target"]}) ID:{n["id"]}</small></h5>'
-                f'<p>{n["message"]}</p>'
-                f'<sm>از: {n["created_by"]} | {str(n["created_at"])[:16]}</sm>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-    else:
-        st.info("کوئی اعلان نہیں")
-
-# ───────────────────────────────
-# BEST STUDENTS
-# ───────────────────────────────
-elif pg == "best" and IS_ADMIN:
-    section("🏆", "ماہانہ بہترین طلباء")
-    c1, c2 = st.columns(2)
-    mnth = c1.date_input("مہینہ", date.today().replace(day=1))
-    df_f = c2.selectbox("شعبہ", ["تمام"] + DEPTS)
-    d1 = mnth.replace(day=1)
-    if mnth.month == 12:
-        d2 = mnth.replace(year=mnth.year + 1, month=1, day=1) - timedelta(days=1)
-    else:
-        d2 = mnth.replace(month=mnth.month + 1, day=1) - timedelta(days=1)
-
-    dw = "" if df_f == "تمام" else f" AND dept='{df_f}'"
-    studs = query(
-        f"SELECT id,name,father_name,dept FROM students WHERE is_active=1{dw}"
-    )
-    scores = []
-    for s in (studs or []):
-        gs, cs = [], []
-        if s["dept"] == "حفظ":
-            recs = query(
-                "SELECT attendance,sabaq_nagha,sq_nagha,manzil_nagha,"
-                "sq_mistakes,manzil_mistakes,cleanliness "
-                "FROM hifz_records WHERE student_id=? AND rec_date BETWEEN ? AND ?",
-                (s["id"], str(d1), str(d2))
-            )
-            for r in (recs or []):
-                g = hifz_grade(r["attendance"], r["sabaq_nagha"], r["sq_nagha"],
-                               r["manzil_nagha"], r["sq_mistakes"], r["manzil_mistakes"])
-                gm = {"ممتاز":100,"جید جداً":85,"جید":75,"مقبول":60,
-                      "ناقص":40,"کمزور":25,"ناکام":10,"غیر حاضر":0,"رخصت":50}
-                gs.append(gm.get(g, 0))
-                if r.get("cleanliness"):
-                    cs.append({"بہترین":3,"بہتر":2,"ناقص":1}.get(r["cleanliness"], 0))
-        else:
-            recs = query(
-                "SELECT attendance,performance,cleanliness "
-                "FROM general_records WHERE student_id=? AND rec_date BETWEEN ? AND ?",
-                (s["id"], str(d1), str(d2))
-            )
-            for r in (recs or []):
-                pm = {"بہت بہتر":90,"بہتر":80,"مناسب":65,"کمزور":45}
-                att = r["attendance"]
-                gs.append(
-                    pm.get(r.get("performance",""), 70) if att == "حاضر"
-                    else (50 if att == "رخصت" else 0)
-                )
-                if r.get("cleanliness"):
-                    cs.append({"بہترین":3,"بہتر":2,"ناقص":1}.get(r["cleanliness"], 0))
-        if gs:
-            scores.append({
-                "name": s["name"], "father": s["father_name"],
-                "dept": s["dept"],
-                "ga": round(sum(gs) / len(gs), 1),
-                "ca": round(sum(cs) / len(cs), 2) if cs else 0,
-                "days": len(gs),
+                        grade_scores.append(0)
+                avg_grade = sum(grade_scores)/len(grade_scores) if grade_scores else 0
+                clean_records = conn.execute("SELECT cleanliness FROM qaida_records WHERE student_id=? AND r_date BETWEEN ? AND ? AND cleanliness IS NOT NULL", (sid, start_date, end_date)).fetchall()
+                clean_scores = [cleanliness_to_score(c[0]) for c in clean_records if c[0]]
+                avg_clean = sum(clean_scores)/len(clean_scores) if clean_scores else 0
+            else:
+                records = conn.execute("SELECT attendance, performance FROM general_education WHERE student_id=? AND dept=? AND r_date BETWEEN ? AND ?", (sid, dept, start_date, end_date)).fetchall()
+                grade_scores = []
+                for rec in records:
+                    att = rec[0]
+                    perf = rec[1] if rec[1] else ""
+                    if att == "حاضر":
+                        if perf == "بہت بہتر":
+                            grade_scores.append(90)
+                        elif perf == "بہتر":
+                            grade_scores.append(80)
+                        elif perf == "مناسب":
+                            grade_scores.append(65)
+                        elif perf == "کمزور":
+                            grade_scores.append(45)
+                        else:
+                            grade_scores.append(75)
+                    elif att == "رخصت":
+                        grade_scores.append(50)
+                    else:
+                        grade_scores.append(0)
+                avg_grade = sum(grade_scores)/len(grade_scores) if grade_scores else 0
+                clean_records = conn.execute("SELECT cleanliness FROM general_education WHERE student_id=? AND r_date BETWEEN ? AND ? AND cleanliness IS NOT NULL", (sid, start_date, end_date)).fetchall()
+                clean_scores = [cleanliness_to_score(c[0]) for c in clean_records if c[0]]
+                avg_clean = sum(clean_scores)/len(clean_scores) if clean_scores else 0
+            conn.close()
+            student_scores.append({
+                "id": sid,
+                "name": name,
+                "father": father,
+                "roll": roll,
+                "dept": dept,
+                "avg_grade": avg_grade,
+                "avg_clean": avg_clean
             })
+        
+        sorted_grade = sorted(student_scores, key=lambda x: x["avg_grade"], reverse=True)
+        sorted_clean = sorted(student_scores, key=lambda x: x["avg_clean"], reverse=True)
+        
+        st.markdown("---")
+        st.subheader("📚 تعلیمی کارکردگی کے لحاظ سے بہترین طلباء")
+        col1, col2, col3 = st.columns(3)
+        for i, student in enumerate(sorted_grade[:3]):
+            with [col1, col2, col3][i]:
+                medal = ["🥇", "🥈", "🥉"][i]
+                color_class = ["gold", "silver", "bronze"][i]
+                st.markdown(f"""
+                <div class="best-student-card">
+                    <h2 class="{color_class}">{medal}</h2>
+                    <h3>{student['name']}</h3>
+                    <p>والد: {student['father']}</p>
+                    <p>شناختی نمبر: {student['roll'] or '-'}</p>
+                    <p>شعبہ: {student['dept']}</p>
+                    <p>اوسط نمبر: {student['avg_grade']:.1f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.subheader("🧹 صفائی کے لحاظ سے بہترین طلباء")
+        col1, col2, col3 = st.columns(3)
+        for i, student in enumerate(sorted_clean[:3]):
+            with [col1, col2, col3][i]:
+                medal = ["🥇", "🥈", "🥉"][i]
+                color_class = ["gold", "silver", "bronze"][i]
+                clean_percent = (student['avg_clean'] / 3) * 100
+                st.markdown(f"""
+                <div class="best-student-card">
+                    <h2 class="{color_class}">{medal}</h2>
+                    <h3>{student['name']}</h3>
+                    <p>والد: {student['father']}</p>
+                    <p>شناختی نمبر: {student['roll'] or '-'}</p>
+                    <p>شعبہ: {student['dept']}</p>
+                    <p>صفائی اوسط: {clean_percent:.1f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with st.expander("📊 تمام طلباء کی تفصیلی کارکردگی"):
+            df_all = pd.DataFrame(student_scores)
+            df_all = df_all.rename(columns={
+                "name": "نام", "father": "والد کا نام", "roll": "شناختی نمبر", "dept": "شعبہ",
+                "avg_grade": "تعلیمی اوسط (%)", "avg_clean": "صفائی اوسط (0-3)"
+            })
+            df_all["تعلیمی اوسط (%)"] = df_all["تعلیمی اوسط (%)"].round(1)
+            df_all["صفائی اوسط (0-3)"] = df_all["صفائی اوسط (0-3)"].round(2)
+            st.dataframe(df_all, use_container_width=True)
+            st.download_button("📥 CSV ڈاؤن لوڈ کریں", convert_df_to_csv(df_all), "monthly_best_students.csv")
 
-    if not scores:
-        st.warning("اس مدت میں کوئی ریکارڈ نہیں")
+# 3.15 بیک اپ & سیٹنگز
+elif selected == "⚙️ بیک اپ & سیٹنگز" and st.session_state.user_type == "admin":
+    st.header("بیک اپ اور سیٹنگز")
+    st.subheader("📥 مکمل ڈیٹا بیس بیک اپ")
+    if os.path.exists(DB_NAME):
+        with open(DB_NAME, "rb") as f:
+            st.download_button(label="💾 ڈیٹا بیس فائل ڈاؤن لوڈ کریں (.db)", data=f,
+                               file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db",
+                               mime="application/x-sqlite3")
     else:
-        by_grade = sorted(scores, key=lambda x: x["ga"], reverse=True)
-        by_clean = sorted(scores, key=lambda x: x["ca"], reverse=True)
-        medals = ["🥇", "🥈", "🥉"]
-
-        st.subheader("📚 تعلیمی کارکردگی")
-        cols = st.columns(3)
-        for col, st_, medal in zip(cols, by_grade[:3], medals):
-            with col:
-                st.markdown(
-                    f'<div class="trophy">'
-                    f'<span class="trophy-medal">{medal}</span>'
-                    f'<div class="trophy-name">{st_["name"]}</div>'
-                    f'<div class="trophy-sub">والد: {st_["father"]}</div>'
-                    f'<div class="trophy-sub">🏫 {st_["dept"]} | {st_["days"]} دن</div>'
-                    f'<div class="trophy-score">{st_["ga"]}%</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.subheader("🧹 صفائی")
-        cols2 = st.columns(3)
-        for col, st_, medal in zip(cols2, by_clean[:3], medals):
-            with col:
-                cp = round((st_["ca"] / 3) * 100, 1)
-                st.markdown(
-                    f'<div class="trophy">'
-                    f'<span class="trophy-medal">{medal}</span>'
-                    f'<div class="trophy-name">{st_["name"]}</div>'
-                    f'<div class="trophy-sub">والد: {st_["father"]}</div>'
-                    f'<div class="trophy-sub">🏫 {st_["dept"]}</div>'
-                    f'<div class="trophy-score">🧹 {cp}%</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-        with st.expander("📊 تمام طلباء"):
-            df_a = pd.DataFrame(scores)
-            df_a.columns = ["نام","والد","شعبہ","تعلیمی %","صفائی","دن"]
-            st.dataframe(
-                df_a.sort_values("تعلیمی %", ascending=False),
-                use_container_width=True, hide_index=True,
-            )
-            st.download_button("📥 CSV", df_csv(df_a), "best.csv")
-
-# ───────────────────────────────
-# PASSWORD
-# ───────────────────────────────
-elif pg == "pw":
-    section("🔑", "پاسورڈ تبدیل کریں")
-    _, col, _ = st.columns([1, 2, 1])
-    with col:
-        if IS_ADMIN:
-            st.markdown("**استاد کا پاسورڈ ری سیٹ کریں**")
-            tl = [r["username"] for r in query(
-                "SELECT username FROM users WHERE role='teacher'")]
-            with st.form("adm_pw_f"):
-                sel = st.selectbox("استاد", tl) if tl else st.text_input("استاد")
-                np1 = st.text_input("نیا پاسورڈ*", type="password")
-                np2 = st.text_input("تصدیق*", type="password")
-                if st.form_submit_button("✅ ری سیٹ کریں"):
-                    if np1 and np1 == np2 and len(np1) >= 6:
-                        execute(
-                            "UPDATE users SET password=? WHERE username=?",
-                            (make_hash(np1), sel),
-                        )
-                        log_action(st.session_state.username, "PW Reset", sel)
-                        st.success(f"✅ {sel} کا پاسورڈ تبدیل!")
-                    elif len(np1) < 6:
-                        st.error("کم از کم 6 حروف")
-                    else:
-                        st.error("پاسورڈ میل نہیں کھاتے")
-            st.markdown("<hr>", unsafe_allow_html=True)
-
-        st.markdown("**اپنا پاسورڈ تبدیل کریں**")
-        with st.form("my_pw_f"):
-            op  = st.text_input("پرانا پاسورڈ*", type="password")
-            np1 = st.text_input("نیا پاسورڈ*", type="password")
-            np2 = st.text_input("تصدیق*", type="password")
-            if st.form_submit_button("✅ تبدیل کریں"):
-                u = query(
-                    "SELECT password FROM users WHERE username=?",
-                    (st.session_state.username,), one=True,
-                )
-                if u and verify_password(op, u["password"]):
-                    if np1 == np2 and len(np1) >= 6:
-                        execute(
-                            "UPDATE users SET password=? WHERE username=?",
-                            (make_hash(np1), st.session_state.username),
-                        )
-                        log_action(st.session_state.username, "PW Changed")
-                        st.success("✅ تبدیل! دوبارہ لاگ ان کریں")
-                        for k in list(st.session_state.keys()):
-                            del st.session_state[k]
-                        st.rerun()
-                    elif len(np1) < 6:
-                        st.error("کم از کم 6 حروف")
-                    else:
-                        st.error("پاسورڈ میل نہیں")
-                else:
-                    st.error("❌ پرانا پاسورڈ غلط ہے")
-
-# ───────────────────────────────
-# BACKUP
-# ───────────────────────────────
-elif pg == "backup" and IS_ADMIN:
-    section("⚙️", "بیک اپ & سیٹنگز")
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.markdown("<div class='pc'>", unsafe_allow_html=True)
-        st.markdown("**📥 ڈیٹا بیس بیک اپ**")
-        if os.path.exists(DB):
-            with open(DB, "rb") as f:
-                st.download_button(
-                    "💾 مکمل ڈیٹا بیس (.db)", f,
-                    f"jamia_bkp_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
-                    "application/x-sqlite3", use_container_width=True,
-                )
-        if st.button("📦 CSV زپ بنائیں", use_container_width=True):
-            tables = [
-                "users","students","hifz_records","qaida_records","general_records",
-                "teacher_attendance","leave_requests","exams","passed_paras",
-                "timetable","notifications","staff_notes","audit_log",
-            ]
-            buf = io.BytesIO()
-            with zipfile.ZipFile(buf, "w") as zf:
-                for t in tables:
-                    try:
-                        rows = query(f"SELECT * FROM {t}")
-                        if rows:
-                            zf.writestr(
-                                f"{t}.csv",
-                                pd.DataFrame(rows).to_csv(index=False).encode("utf-8-sig"),
-                            )
-                    except:
-                        pass
-            buf.seek(0)
-            st.download_button(
-                "📥 CSV زپ ڈاؤن لوڈ", buf,
-                f"csv_{datetime.now().strftime('%Y%m%d')}.zip",
-                "application/zip", use_container_width=True,
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with c2:
-        st.markdown("<div class='pc'>", unsafe_allow_html=True)
-        st.markdown("**🔄 ڈیٹا بیس ری سٹور**")
-        st.warning("⚠️ پہلے بیک اپ لیں!")
-        upf = st.file_uploader(".db فائل اپ لوڈ کریں", type=["db"])
-        if upf:
-            if (st.checkbox("میں سمجھتا/سمجھتی ہوں کہ موجودہ ڈیٹا بدل جائے گا")
-                    and st.button("🔄 ری سٹور کریں")):
-                if os.path.exists(DB):
-                    shutil.copy(DB, DB + ".bak")
-                with open(DB, "wb") as f:
-                    f.write(upf.getbuffer())
-                st.success("✅ ری سٹور مکمل!")
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown("<div class='pc'>", unsafe_allow_html=True)
-    st.markdown("**📋 آڈٹ لاگ (آخری 50)**")
-    logs = query(
-        "SELECT username AS صارف, action AS عمل, details AS تفصیل, "
-        "created_at AS وقت FROM audit_log ORDER BY created_at DESC LIMIT 50"
-    )
-    if logs:
-        st.dataframe(pd.DataFrame(logs), use_container_width=True, hide_index=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ═══════════════════════════════════════════════════════
-#  TEACHER PAGES
-# ═══════════════════════════════════════════════════════
-
-# ───────────────────────────────
-# TEACHER HOME
-# ───────────────────────────────
-elif pg == "home" and not IS_ADMIN:
-    section("🏠", f"خوش آمدید، {st.session_state.username}!")
-    ms = scalar(
-        "SELECT COUNT(*) FROM students WHERE teacher=? AND is_active=1",
-        (st.session_state.username,)
-    )
-    mr = scalar(
-        "SELECT COUNT(*) FROM hifz_records WHERE teacher=?",
-        (st.session_state.username,)
-    )
-    td = scalar(
-        "SELECT COUNT(*) FROM hifz_records WHERE teacher=? AND rec_date=?",
-        (st.session_state.username, str(date.today())),
-    )
-    ml = scalar(
-        "SELECT COUNT(*) FROM leave_requests WHERE username=? AND status='پینڈنگ'",
-        (st.session_state.username,)
-    )
-    metric_row([
-        ("👨‍🎓", ms, "میرے طلباء"),
-        ("📋",   mr, "کل ریکارڈ"),
-        ("✅",   td, "آج اندراج"),
-        ("📩",   ml, "رخصت پینڈنگ"),
-    ])
-    notifs = query(
-        "SELECT title, message FROM notifications "
-        "WHERE target IN ('تمام','اساتذہ') ORDER BY created_at DESC LIMIT 5"
-    )
-    if notifs:
-        st.markdown("**🔔 تازہ اعلانات**")
-        for n in notifs:
-            st.markdown(
-                f'<div class="nf-card">'
-                f'<h5>{n["title"]}</h5>'
-                f'<p>{n["message"][:120]}</p>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-# ───────────────────────────────
-# TEACHER DAILY ENTRY  ← ICON GRID
-# ───────────────────────────────
-elif pg == "entry" and not IS_ADMIN:
-    section("📝", "روزانہ سبق اندراج", "طالب علم کا بٹن دبائیں")
-
-    c1, c2 = st.columns(2)
-    entry_date = c1.date_input("تاریخ", date.today())
-    dept = c2.selectbox(
-        "شعبہ", DEPTS,
-        index=DEPTS.index(st.session_state.entry_dept)
-        if st.session_state.entry_dept in DEPTS else 0,
-    )
-    st.session_state.entry_dept = dept
-
-    my_studs = query(
-        "SELECT id,name,father_name FROM students "
-        "WHERE teacher=? AND dept=? AND is_active=1 ORDER BY name",
-        (st.session_state.username, dept),
-    )
-    if not my_studs:
-        st.info(f"آپ کی {dept} کلاس میں کوئی طالب علم نہیں")
-        st.stop()
-
-    # Find which students have today's record
-    done_ids = set()
-    for s in my_studs:
-        if dept == "حفظ":
-            r = query(
-                "SELECT id FROM hifz_records WHERE student_id=? AND rec_date=?",
-                (s["id"], str(entry_date)), one=True,
-            )
-        elif dept == "قاعدہ":
-            r = query(
-                "SELECT id FROM qaida_records WHERE student_id=? AND rec_date=?",
-                (s["id"], str(entry_date)), one=True,
-            )
-        else:
-            r = query(
-                "SELECT id FROM general_records WHERE student_id=? AND dept=? AND rec_date=?",
-                (s["id"], dept, str(entry_date)), one=True,
-            )
-        if r:
-            done_ids.add(s["id"])
-
-    # ── Render student icon grid ──
-    COLS_PER_ROW = 4
-    st.markdown(
-        f"**{len(my_studs)} طلباء | {entry_date} | "
-        f"✅ {len(done_ids)} مکمل | 📝 {len(my_studs)-len(done_ids)} باقی**"
-    )
-    chunks = [my_studs[i:i+COLS_PER_ROW] for i in range(0, len(my_studs), COLS_PER_ROW)]
-    sel = st.session_state.sel_stu
-
-    for chunk in chunks:
-        row_cols = st.columns(COLS_PER_ROW)
-        for col, s in zip(row_cols, chunk):
-            is_done = s["id"] in done_ids
-            is_sel  = sel == s["id"]
-            nm = s["name"][:7]
-            fn = s["father_name"][:6]
-            icon = "✅" if is_done else ("✏️" if is_sel else "👤")
-            lbl = f"{icon}\n{nm}\n{fn}"
-            with col:
-                if st.button(lbl, key=f"stu_{s['id']}", use_container_width=True):
-                    if not is_done:
-                        st.session_state.sel_stu = s["id"]
-                        st.rerun()
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-
-    # ── Entry form for selected student ──
-    if sel and sel not in done_ids:
-        s_data = next((s for s in my_studs if s["id"] == sel), None)
-        if not s_data:
-            st.session_state.sel_stu = None
+        st.warning("ڈیٹا بیس فائل موجود نہیں")
+    st.markdown("---")
+    st.subheader("🔄 ڈیٹا بیس ریسٹور کریں (پوری .db فائل)")
+    st.warning("⚠️ احتیاط: موجودہ ڈیٹا ختم ہو جائے گا! پہلے بیک اپ ضرور لیں۔")
+    uploaded_db = st.file_uploader("پہلے سے محفوظ کردہ .db فائل منتخب کریں", type=["db"], key="db_upload")
+    if uploaded_db is not None:
+        confirm = st.checkbox("میں سمجھ گیا ہوں کہ موجودہ ڈیٹا ختم ہو جائے گا")
+        if confirm and st.button("ریسٹور کریں (پوری ڈیٹا بیس)"):
+            if os.path.exists(DB_NAME):
+                shutil.copy(DB_NAME, f"{DB_NAME}_before_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+            with open(DB_NAME, "wb") as f:
+                f.write(uploaded_db.getbuffer())
+            st.success("ڈیٹا بیس ریسٹور کر دیا گیا۔ براہ کرم ایپ کو دوبارہ چلائیں (ری لوڈ کریں)۔")
             st.rerun()
-
-        section("✏️", f"{s_data['name']} ولد {s_data['father_name']}", f"{dept} | {entry_date}")
-
-        k = str(s_data["id"])
-        att = st.radio("حاضری", ATT, key=f"att_{k}", horizontal=True)
-        cln = st.selectbox("صفائی", CLEAN, key=f"cln_{k}")
-
-        s_nagha = sq_nagha = m_nagha = 0
-        sabaq_txt = sq_txt = m_txt = ""
-        s_lines = sq_atk = sq_mis = m_atk = m_mis = 0
-
-        # ── HIFZ FORM ──
-        if dept == "حفظ" and att == "حاضر":
-            st.markdown("**📖 سبق**")
-            sc1, sc2 = st.columns(2)
-            sn = sc1.checkbox("سبق ناغہ", key=f"sn_{k}")
-            sy = sc2.checkbox("سبق یاد نہیں", key=f"sy_{k}")
-            if sn or sy:
-                s_nagha = 1
-                sabaq_txt = "ناغہ" if sn else "یاد نہیں"
-            else:
-                rc1, rc2, rc3 = st.columns(3)
-                sur = rc1.selectbox("سورت", SURAHS, key=f"sr_{k}")
-                af  = rc2.text_input("آیت سے", key=f"af_{k}")
-                at_ = rc3.text_input("آیت تک", key=f"at_{k}")
-                s_lines = st.number_input("ستر (لائنیں)", 0, 50, 0, key=f"sl_{k}")
-                sabaq_txt = f"{sur}:{af}-{at_}"
-
-            st.markdown("**📚 سبقی**")
-            sc1, sc2 = st.columns(2)
-            sqn_ = sc1.checkbox("سبقی ناغہ", key=f"sqn_{k}")
-            sqy  = sc2.checkbox("سبقی یاد نہیں", key=f"sqy_{k}")
-            if sqn_ or sqy:
-                sq_nagha = 1
-                sq_txt = "ناغہ" if sqn_ else "یاد نہیں"
-            else:
-                rc1, rc2, rc3, rc4 = st.columns(4)
-                sqp = rc1.selectbox("پارہ", PARAS, key=f"sqp_{k}")
-                sqm = rc2.selectbox("مقدار", MIQDAR, key=f"sqm_{k}")
-                sq_atk = rc3.number_input("اٹکن", 0, key=f"sqat_{k}")
-                sq_mis = rc4.number_input("غلطی", 0, key=f"sqms_{k}")
-                sq_txt = f"{sqp}:{sqm}"
-
-            st.markdown("**🌙 منزل**")
-            sc1, sc2 = st.columns(2)
-            mn_ = sc1.checkbox("منزل ناغہ", key=f"mn_{k}")
-            my_ = sc2.checkbox("منزل یاد نہیں", key=f"my_{k}")
-            if mn_ or my_:
-                m_nagha = 1
-                m_txt = "ناغہ" if mn_ else "یاد نہیں"
-            else:
-                rc1, rc2, rc3, rc4 = st.columns(4)
-                mp_   = rc1.selectbox("پارہ", PARAS, key=f"mp_{k}")
-                mm__  = rc2.selectbox("مقدار", MIQDAR, key=f"mm_{k}")
-                m_atk = rc3.number_input("اٹکن", 0, key=f"mat_{k}")
-                m_mis = rc4.number_input("غلطی", 0, key=f"mms_{k}")
-                m_txt = f"{mp_}:{mm__}"
-
-            grade = hifz_grade(att, s_nagha, sq_nagha, m_nagha, sq_mis, m_mis)
-            st.markdown(f"**درجہ:** {chip(grade)}", unsafe_allow_html=True)
-
-        elif dept == "حفظ":
-            grade = "غیر حاضر" if att == "غیر حاضر" else "رخصت"
-
-        # ── QAIDA FORM ──
-        elif dept == "قاعدہ" and att == "حاضر":
-            lesson_no_v = st.text_input("تختی/سبق نمبر", key=f"ln_{k}")
-            lines_v     = st.number_input("لائنیں", 0, key=f"lns_{k}")
-            details_v   = st.text_area("تفصیل", key=f"det_{k}")
-
-        # ── GENERAL FORM ──
-        elif dept in ("درسِ نظامی", "عصری تعلیم") and att == "حاضر":
-            sub_v = st.text_input("مضمون/کتاب", key=f"sub_{k}")
-            les_v = st.text_area("سبق", key=f"les_{k}")
-            hw_v  = st.text_input("ہوم ورک", key=f"hw_{k}")
-            prf_v = st.select_slider(
-                "کارکردگی",
-                ["بہت بہتر","بہتر","مناسب","کمزور"],
-                key=f"prf_{k}",
-            )
-
-        note_v = st.text_input("نوٹ (اختیاری)", key=f"nt_{k}")
-
-        bc1, bc2 = st.columns(2)
-        if bc1.button(f"💾 {s_data['name']} محفوظ کریں", use_container_width=True):
-            try:
-                if dept == "حفظ":
-                    gr = hifz_grade(att, s_nagha, sq_nagha, m_nagha, sq_mis, m_mis)
-                    execute(
-                        "INSERT INTO hifz_records("
-                        "rec_date,student_id,teacher,attendance,"
-                        "sabaq,sabaq_lines,sabaq_nagha,"
-                        "sq_text,sq_nagha,sq_atkan,sq_mistakes,"
-                        "manzil_text,manzil_nagha,manzil_atkan,manzil_mistakes,"
-                        "cleanliness,grade,note) "
-                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (str(entry_date), s_data["id"], st.session_state.username, att,
-                         sabaq_txt, s_lines, s_nagha,
-                         sq_txt, sq_nagha, sq_atk, sq_mis,
-                         m_txt, m_nagha, m_atk, m_mis,
-                         cln, gr, note_v),
-                    )
-                elif dept == "قاعدہ":
-                    ln_v = st.session_state.get(f"ln_{k}", "")
-                    lns  = st.session_state.get(f"lns_{k}", 0)
-                    det  = st.session_state.get(f"det_{k}", "")
-                    if att != "حاضر":
-                        ln_v = ""; lns = 0; det = ""
-                    execute(
-                        "INSERT INTO qaida_records("
-                        "rec_date,student_id,teacher,attendance,"
-                        "lesson_no,total_lines,details,cleanliness,note) "
-                        "VALUES(?,?,?,?,?,?,?,?,?)",
-                        (str(entry_date), s_data["id"], st.session_state.username, att,
-                         ln_v, lns, det, cln, note_v),
-                    )
-                else:
-                    sv  = st.session_state.get(f"sub_{k}", "") if att == "حاضر" else ""
-                    lv  = st.session_state.get(f"les_{k}", "") if att == "حاضر" else ""
-                    hv  = st.session_state.get(f"hw_{k}",  "") if att == "حاضر" else ""
-                    pv  = st.session_state.get(f"prf_{k}", "") if att == "حاضر" else ""
-                    execute(
-                        "INSERT INTO general_records("
-                        "rec_date,student_id,teacher,dept,attendance,"
-                        "subject,lesson,homework,performance,cleanliness,note) "
-                        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                        (str(entry_date), s_data["id"], st.session_state.username, dept,
-                         att, sv, lv, hv, pv, cln, note_v),
-                    )
-                log_action(st.session_state.username, "Entry", f"{s_data['name']} {entry_date}")
-                st.success(f"✅ {s_data['name']} محفوظ!")
-                st.session_state.sel_stu = None
-                st.rerun()
-            except Exception as e:
-                st.error(f"خرابی: {e}")
-
-        if bc2.button("← واپس", use_container_width=True):
-            st.session_state.sel_stu = None
-            st.rerun()
-
-    elif sel in done_ids:
-        st.success("✅ اس طالب علم کا آج کا ریکارڈ پہلے سے محفوظ ہے")
-        if st.button("← واپس"):
-            st.session_state.sel_stu = None
-            st.rerun()
-
-# ───────────────────────────────
-# TEACHER EXAM REQUEST
-# ───────────────────────────────
-elif pg == "t_exam" and not IS_ADMIN:
-    section("🎓", "امتحانی درخواست")
-    ms = query(
-        "SELECT id,name,father_name,dept FROM students "
-        "WHERE teacher=? AND is_active=1",
-        (st.session_state.username,)
-    )
-    if not ms:
-        st.warning("آپ کی کلاس میں کوئی طالب علم نہیں")
-    else:
-        with st.form("ex_req_f"):
-            names = [f"{s['name']} ولد {s['father_name']} ({s['dept']})" for s in ms]
-            idx = st.selectbox("طالب علم", range(len(names)), format_func=lambda i: names[i])
-            s = ms[idx]
-            et = st.selectbox("امتحان", ["پارہ ٹیسٹ","ماہانہ","سہ ماہی","سالانہ"])
-            c1, c2 = st.columns(2)
-            sd = c1.date_input("شروع", date.today())
-            ed = c2.date_input("ختم", date.today() + timedelta(days=7))
-            td_ = (ed - sd).days + 1
-            st.caption(f"کل دن: {td_}")
-            fp = tp = 0
-            bk = amt = ""
-            if et == "پارہ ٹیسٹ" or s["dept"] == "حفظ":
-                c1, c2 = st.columns(2)
-                fp = c1.number_input("پارہ (شروع)", 1, 30, 1)
-                tp = c2.number_input("پارہ (ختم)", int(fp), 30, int(fp))
-            if s["dept"] != "حفظ":
-                bk = st.text_input("کتاب")
-            amt = st.text_input("مقدار خواندگی")
-            if st.form_submit_button("📤 درخواست بھیجیں"):
-                execute(
-                    "INSERT INTO exams(student_id,teacher,dept,exam_type,"
-                    "from_para,to_para,book_name,amount_read,"
-                    "start_date,end_date,total_days) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                    (s["id"], st.session_state.username, s["dept"], et,
-                     fp, tp, bk, amt, str(sd), str(ed), td_),
-                )
-                st.success("✅ درخواست بھیج دی گئی")
-
-# ───────────────────────────────
-# TEACHER LEAVE
-# ───────────────────────────────
-elif pg == "t_lv" and not IS_ADMIN:
-    section("📩", "رخصت کی درخواست")
-    ml = query(
-        "SELECT leave_type AS نوعیت, start_date AS تاریخ, "
-        "days AS دن, status AS حالت "
-        "FROM leave_requests WHERE username=? ORDER BY created_at DESC LIMIT 10",
-        (st.session_state.username,)
-    )
-    if ml:
-        st.markdown("**حالیہ درخواستیں**")
-        for lv in ml:
-            sc_ = ("so" if lv["حالت"] == "منظور"
-                   else "sr" if lv["حالت"] == "مسترد" else "sp")
-            st.markdown(
-                f'<div class="lv-card">'
-                f'<span class="{sc_}">{lv["حالت"]}</span>&nbsp;'
-                f'<b>{lv["نوعیت"]}</b> | {lv["تاریخ"]} | {lv["دن"]} دن'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-        st.markdown("<hr>", unsafe_allow_html=True)
-
-    with st.form("lv_f"):
-        c1, c2 = st.columns(2)
-        lt   = c1.selectbox("نوعیت", ["بیماری","ضروری کام","ہنگامی","دیگر"])
-        sd   = c2.date_input("تاریخ شروع", date.today())
-        days = c1.number_input("دنوں کی تعداد", 1, 30, 1)
-        c2.caption(f"واپسی: {sd + timedelta(days=int(days) - 1)}")
-        rsn = st.text_area("وجہ*", max_chars=500)
-        if st.form_submit_button("📤 درخواست بھیجیں"):
-            if rsn.strip():
-                execute(
-                    "INSERT INTO leave_requests(username,leave_type,start_date,days,reason) "
-                    "VALUES(?,?,?,?,?)",
-                    (st.session_state.username, lt, str(sd), days, rsn),
-                )
-                st.success("✅ درخواست بھیج دی گئی!")
-                st.rerun()
-            else:
-                st.error("وجہ ضروری ہے")
-
-# ───────────────────────────────
-# TEACHER ATTENDANCE
-# ───────────────────────────────
-elif pg == "t_att" and not IS_ADMIN:
-    section("🕒", "میری حاضری")
-    today = date.today()
-    rec = query(
-        "SELECT * FROM teacher_attendance WHERE username=? AND att_date=?",
-        (st.session_state.username, str(today)), one=True,
-    )
-    st.markdown(
-        f'<div class="pc" style="text-align:center;font-size:.95rem;'
-        f'font-weight:700;color:#0a5c3c">📅 {today}</div>',
-        unsafe_allow_html=True,
-    )
-    if not rec:
-        arr = st.time_input("آمد کا وقت", datetime.now().time())
-        if st.button("✅ آمد درج کریں", use_container_width=True):
-            try:
-                execute(
-                    "INSERT INTO teacher_attendance(username,att_date,arrival) "
-                    "VALUES(?,?,?)",
-                    (st.session_state.username, str(today), arr.strftime("%I:%M %p")),
-                )
-                st.success("✅ آمد درج!")
-                st.rerun()
-            except:
-                st.warning("پہلے سے درج ہے")
-    elif not rec.get("departure"):
-        st.success(f"✅ آمد: {rec['arrival']}")
-        dep = st.time_input("رخصت کا وقت", datetime.now().time())
-        if st.button("✅ رخصت درج کریں", use_container_width=True):
-            execute(
-                "UPDATE teacher_attendance SET departure=? WHERE username=? AND att_date=?",
-                (dep.strftime("%I:%M %p"), st.session_state.username, str(today)),
-            )
-            st.success("✅ رخصت درج!")
-            st.rerun()
-    else:
-        c1, c2 = st.columns(2)
-        c1.metric("🟢 آمد", rec["arrival"])
-        c2.metric("🔴 رخصت", rec["departure"])
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown("**ماہانہ ریکارڈ**")
-    monthly = query(
-        "SELECT att_date AS تاریخ, arrival AS آمد, departure AS رخصت "
-        "FROM teacher_attendance WHERE username=? AND att_date>=? "
-        "ORDER BY att_date DESC",
-        (st.session_state.username, str(date.today().replace(day=1))),
-    )
-    if monthly:
-        st.dataframe(pd.DataFrame(monthly), use_container_width=True, hide_index=True)
-    else:
-        st.caption("اس ماہ کوئی ریکارڈ نہیں")
-
-# ───────────────────────────────
-# TEACHER TIMETABLE
-# ───────────────────────────────
-elif pg == "t_tt" and not IS_ADMIN:
-    section("📚", "میرا ٹائم ٹیبل")
-    tt = query(
-        "SELECT day_name AS دن, period AS وقت, subject AS مضمون, room AS کمرہ "
-        "FROM timetable WHERE teacher=? ORDER BY day_name,period",
-        (st.session_state.username,)
-    )
-    if tt:
-        df = pd.DataFrame(tt)
+    st.markdown("---")
+    st.subheader("📄 CSV فائلوں کا بیک اپ (زپ میں ڈاؤن لوڈ)")
+    if st.button("💾 تمام ٹیبلز کی CSV بیک اپ (زپ) بنائیں"):
+        tables = ["teachers", "students", "hifz_records", "qaida_records", "general_education", "t_attendance", "exams", "passed_paras", "timetable", "leave_requests", "notifications", "audit_log", "staff_monitoring"]
+        conn = get_db_connection()
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for t in tables:
+                try:
+                    df = pd.read_sql_query(f"SELECT * FROM {t}", conn)
+                    csv_data = df.to_csv(index=False).encode('utf-8-sig')
+                    zip_file.writestr(f"{t}.csv", csv_data)
+                except Exception as e:
+                    st.warning(f"ٹیبل {t} کی بیک اپ میں خرابی: {str(e)}")
+        conn.close()
+        zip_buffer.seek(0)
+        st.download_button(label="📥 CSV بیک اپ زپ ڈاؤن لوڈ کریں", data=zip_buffer,
+                           file_name=f"backup_tables_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                           mime="application/zip")
+    st.markdown("---")
+    st.subheader("📤 CSV فائل اپ لوڈ کر کے ڈیٹا ریسٹور کریں")
+    st.info("یہاں آپ کسی ایک ٹیبل کی CSV فائل (پہلے بنائی گئی) اپ لوڈ کر سکتے ہیں۔ ڈیٹا خود بخود متعلقہ ٹیبل میں شامل ہو جائے گا۔")
+    table_options = {
+        "اساتذہ (teachers)": "teachers",
+        "طلبہ (students)": "students",
+        "حفظ ریکارڈ (hifz_records)": "hifz_records",
+        "قاعدہ ریکارڈ (qaida_records)": "qaida_records",
+        "عمومی تعلیم (general_education)": "general_education",
+        "امتحانات (exams)": "exams",
+        "پاس شدہ پارے (passed_paras)": "passed_paras",
+        "ٹائم ٹیبل (timetable)": "timetable",
+        "رخصت درخواستیں (leave_requests)": "leave_requests",
+        "نوٹیفیکیشنز (notifications)": "notifications",
+        "عملہ نگرانی (staff_monitoring)": "staff_monitoring"
+    }
+    selected_table_display = st.selectbox("ٹیبل منتخب کریں", list(table_options.keys()))
+    selected_table = table_options[selected_table_display]
+    uploaded_csv = st.file_uploader("CSV فائل منتخب کریں (UTF-8 encoding)", type=["csv"], key="csv_upload")
+    if uploaded_csv is not None:
         try:
-            pivot = df.pivot(index="وقت", columns="دن", values="مضمون").fillna("—")
-            st.dataframe(pivot, use_container_width=True)
-        except:
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        st.download_button(
-            "📥 ٹائم ٹیبل ڈاؤن لوڈ",
-            make_html_report(df, "ٹائم ٹیبل", st.session_state.username),
-            "timetable.html", "text/html",
-        )
-    else:
-        st.info("ابھی آپ کا ٹائم ٹیبل ترتیب نہیں دیا گیا")
+            df = pd.read_csv(uploaded_csv)
+            st.write("اپ لوڈ کی گئی CSV میں پہلی 5 قطاریں:")
+            st.dataframe(df.head())
+            upload_mode = st.radio("اپ لوڈ موڈ:", ["موجودہ ڈیٹا میں شامل کریں (Append)", "موجودہ ڈیٹا کو حذف کر کے نیا ڈالیں (Replace)"])
+            if st.button("ڈیٹا ریسٹور کریں"):
+                conn = get_db_connection()
+                c = conn.cursor()
+                if upload_mode == "موجودہ ڈیٹا کو حذف کر کے نیا ڈالیں (Replace)":
+                    c.execute(f"DELETE FROM {selected_table}")
+                    st.warning(f"{selected_table_display} کا پرانا ڈیٹا حذف کر دیا گیا۔")
+                columns = df.columns.tolist()
+                placeholders = ','.join(['?' for _ in columns])
+                query = f"INSERT INTO {selected_table} ({','.join(columns)}) VALUES ({placeholders})"
+                for _, row in df.iterrows():
+                    c.execute(query, tuple(row[col] for col in columns))
+                conn.commit()
+                conn.close()
+                log_audit(st.session_state.username, "CSV Restore", f"Table: {selected_table}, Mode: {upload_mode}")
+                st.success(f"ڈیٹا کامیابی سے {selected_table_display} میں محفوظ ہو گیا۔")
+                st.rerun()
+        except Exception as e:
+            st.error(f"خرابی: {str(e)}۔ یقینی بنائیں کہ CSV فائل صحیح فارمیٹ میں ہے۔")
+    st.markdown("---")
+    with st.expander("آڈٹ لاگ"):
+        conn = get_db_connection()
+        logs = pd.read_sql_query("SELECT user, action, timestamp, details FROM audit_log ORDER BY timestamp DESC LIMIT 50", conn)
+        conn.close()
+        st.dataframe(logs)
+        # -*- coding: utf-8 -*-
+"""
+جامعہ ملیہ اسلامیہ فیصل آباد | سمارٹ ERP
+حصہ 4: استاد کے سیکشنز، لاگ آؤٹ، اور Supabase ڈیٹا کنورژن کے لیے اضافی فنکشنز
+"""
 
-# ─────────────────────────────────────────
-# FOOTER
-# ─────────────────────────────────────────
-st.markdown(
-    '<div class="bottom-pad"></div>'
-    '<div style="text-align:center;padding:12px 0;color:#9ca3af;font-size:.68rem;'
-    'border-top:1px solid #d4e6da;margin-top:20px">'
-    '🕌 جامعہ ملیہ اسلامیہ فیصل آباد — Smart ERP v5.0 | تمام حقوق محفوظ'
-    '</div>',
-    unsafe_allow_html=True,
-)
-st.markdown('</div>', unsafe_allow_html=True)
+# ==================== استاد کے سیکشنز ====================
+# 4.1 روزانہ سبق اندراج
+if selected == "📝 روزانہ سبق اندراج" and st.session_state.user_type == "teacher":
+    st.header("📝 روزانہ سبق اندراج")
+    entry_date = st.date_input("تاریخ (جس دن کا اندراج کرنا ہے)", date.today())
+    dept = st.selectbox("شعبہ منتخب کریں", ["حفظ", "قاعدہ", "درسِ نظامی", "عصری تعلیم"])
+    
+    if dept == "حفظ":
+        st.subheader("حفظ کا اندراج")
+        conn = get_db_connection()
+        students = conn.execute("SELECT id, name, father_name FROM students WHERE teacher_name=? AND dept='حفظ'", (st.session_state.username,)).fetchall()
+        conn.close()
+        if not students:
+            st.info("آپ کی کلاس میں کوئی طالب علم نہیں")
+        else:
+            for sid, s, f in students:
+                key = f"{sid}_{s}_{f}"
+                st.markdown(f"### 👤 {s} ولد {f}")
+                att = st.radio("حاضری", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{key}", horizontal=True)
+                cleanliness = st.selectbox("صفائی کا معیار", cleanliness_options, key=f"clean_{key}")
+                if att != "حاضر":
+                    grade = calculate_grade_with_attendance(att, False, False, False, 0, 0)
+                    st.info(f"**اس طالب علم کا درجہ:** {grade}")
+                    if st.button(f"محفوظ کریں ({s})", key=f"save_absent_{key}"):
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        chk = c.execute("SELECT 1 FROM hifz_records WHERE r_date=? AND student_id=?", (entry_date, sid)).fetchone()
+                        if chk:
+                            st.error(f"{s} کا ریکارڈ پہلے سے موجود ہے (تاریخ {entry_date})")
+                        else:
+                            c.execute("""INSERT INTO hifz_records 
+                                        (r_date, student_id, t_name, surah, lines, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance, cleanliness)
+                                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                      (entry_date, sid, st.session_state.username, "غائب", 0, "غائب", 0, 0, "غائب", 0, 0, att, cleanliness))
+                            conn.commit()
+                            st.success("محفوظ ہو گیا")
+                        conn.close()
+                    st.markdown("---")
+                    continue
+                # سبق
+                st.write("**سبق**")
+                col1, col2 = st.columns(2)
+                sabaq_nagha = col1.checkbox("ناغہ", key=f"sabaq_nagha_{key}")
+                sabaq_yad_nahi = col2.checkbox("یاد نہیں", key=f"sabaq_yad_{key}")
+                if sabaq_nagha or sabaq_yad_nahi:
+                    sabaq_text = "ناغہ" if sabaq_nagha else "یاد نہیں"
+                    lines = 0
+                else:
+                    surah = st.selectbox("سورت", surahs_urdu, key=f"surah_{key}")
+                    a_from = st.text_input("آیت (سے)", key=f"af_{key}")
+                    a_to = st.text_input("آیت (تک)", key=f"at_{key}")
+                    sabaq_text = f"{surah}: {a_from}-{a_to}"
+                    lines = st.number_input("کل ستر (لائنوں کی تعداد)", min_value=0, value=0, key=f"lines_{key}")
+                # سبقی
+                st.write("**سبقی**")
+                col1, col2 = st.columns(2)
+                sq_nagha = col1.checkbox("ناغہ", key=f"sq_nagha_{key}")
+                sq_yad_nahi = col2.checkbox("یاد نہیں", key=f"sq_yad_{key}")
+                if sq_nagha or sq_yad_nahi:
+                    sq_text = "ناغہ" if sq_nagha else "یاد نہیں"
+                    sq_parts = [sq_text]
+                    sq_a = 0
+                    sq_m = 0
+                else:
+                    if f"sq_rows_{key}" not in st.session_state:
+                        st.session_state[f"sq_rows_{key}"] = 1
+                    sq_parts = []
+                    sq_a = 0
+                    sq_m = 0
+                    for i in range(st.session_state[f"sq_rows_{key}"]):
+                        cols = st.columns([2,2,1,1])
+                        p = cols[0].selectbox("پارہ", paras, key=f"sqp_{key}_{i}")
+                        v = cols[1].selectbox("مقدار", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"sqv_{key}_{i}")
+                        a = cols[2].number_input("اٹکن", 0, key=f"sqa_{key}_{i}")
+                        e = cols[3].number_input("غلطی", 0, key=f"sqe_{key}_{i}")
+                        sq_parts.append(f"{p}:{v}")
+                        sq_a += a
+                        sq_m += e
+                    if st.button("➕", key=f"add_sq_{key}", help="مزید سبقی پارہ شامل کریں"):
+                        st.session_state[f"sq_rows_{key}"] += 1
+                        st.rerun()
+                # منزل
+                st.write("**منزل**")
+                col1, col2 = st.columns(2)
+                m_nagha = col1.checkbox("ناغہ", key=f"m_nagha_{key}")
+                m_yad_nahi = col2.checkbox("یاد نہیں", key=f"m_yad_{key}")
+                if m_nagha or m_yad_nahi:
+                    m_text = "ناغہ" if m_nagha else "یاد نہیں"
+                    m_parts = [m_text]
+                    m_a = 0
+                    m_m = 0
+                else:
+                    if f"m_rows_{key}" not in st.session_state:
+                        st.session_state[f"m_rows_{key}"] = 1
+                    m_parts = []
+                    m_a = 0
+                    m_m = 0
+                    for j in range(st.session_state[f"m_rows_{key}"]):
+                        cols = st.columns([2,2,1,1])
+                        p = cols[0].selectbox("پارہ", paras, key=f"mp_{key}_{j}")
+                        v = cols[1].selectbox("مقدار", ["مکمل", "آدھا", "پون", "پاؤ"], key=f"mv_{key}_{j}")
+                        a = cols[2].number_input("اٹکن", 0, key=f"ma_{key}_{j}")
+                        e = cols[3].number_input("غلطی", 0, key=f"me_{key}_{j}")
+                        m_parts.append(f"{p}:{v}")
+                        m_a += a
+                        m_m += e
+                    if st.button("➕", key=f"add_m_{key}", help="مزید منزل پارہ شامل کریں"):
+                        st.session_state[f"m_rows_{key}"] += 1
+                        st.rerun()
+                sabaq_nagha_bool = sabaq_nagha or sabaq_yad_nahi
+                sq_nagha_bool = sq_nagha or sq_yad_nahi
+                m_nagha_bool = m_nagha or m_yad_nahi
+                grade = calculate_grade_with_attendance(att, sabaq_nagha_bool, sq_nagha_bool, m_nagha_bool, sq_m, m_m)
+                st.info(f"**اس طالب علم کا درجہ:** {grade}")
+                if st.button(f"محفوظ کریں ({s})", key=f"save_{key}"):
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    chk = c.execute("SELECT 1 FROM hifz_records WHERE r_date=? AND student_id=?", (entry_date, sid)).fetchone()
+                    if chk:
+                        st.error(f"{s} کا ریکارڈ پہلے سے موجود ہے (تاریخ {entry_date})")
+                    else:
+                        c.execute("""INSERT INTO hifz_records 
+                                    (r_date, student_id, t_name, surah, lines, sq_p, sq_a, sq_m, m_p, m_a, m_m, attendance, cleanliness)
+                                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                  (entry_date, sid, st.session_state.username, sabaq_text, lines,
+                                   " | ".join(sq_parts), sq_a, sq_m,
+                                   " | ".join(m_parts), m_a, m_m, att, cleanliness))
+                        conn.commit()
+                        log_audit(st.session_state.username, "Hifz Entry", f"{s} {entry_date}")
+                        st.success("محفوظ ہو گیا")
+                    conn.close()
+                st.markdown("---")
+    
+    elif dept == "قاعدہ":
+        st.subheader("قاعدہ (نورانی قاعدہ / نماز) کا اندراج")
+        conn = get_db_connection()
+        students = conn.execute("SELECT id, name, father_name FROM students WHERE teacher_name=? AND dept='قاعدہ'", (st.session_state.username,)).fetchall()
+        conn.close()
+        if not students:
+            st.info("آپ کی کلاس میں کوئی طالب علم نہیں")
+        else:
+            for sid, s, f in students:
+                key = f"{sid}_{s}_{f}"
+                st.markdown(f"### 👤 {s} ولد {f}")
+                att = st.radio("حاضری", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_{key}", horizontal=True)
+                cleanliness = st.selectbox("صفائی کا معیار", cleanliness_options, key=f"clean_{key}")
+                if att == "حاضر":
+                    col1, col2 = st.columns(2)
+                    nagha = col1.checkbox("ناغہ", key=f"nagha_{key}")
+                    yad_nahi = col2.checkbox("یاد نہیں", key=f"yad_nahi_{key}")
+                    if nagha or yad_nahi:
+                        lesson_no = "ناغہ" if nagha else "یاد نہیں"
+                        total_lines = 0
+                        details = ""
+                    else:
+                        lesson_type = st.radio("نوعیت", ["نورانی قاعدہ", "نماز (حنفی)"], key=f"lesson_type_{key}", horizontal=True)
+                        if lesson_type == "نورانی قاعدہ":
+                            lesson_no = st.text_input("تختی نمبر / سبق نمبر", key=f"lesson_{key}")
+                            total_lines = st.number_input("کل لائنیں", min_value=0, value=0, key=f"lines_{key}")
+                            details = ""
+                        else:
+                            lesson_no = st.selectbox("سبق منتخب کریں", [
+                                "وضو کا طریقہ", "غسل کا طریقہ", "تیمم کا طریقہ",
+                                "اذان و اقامت", "نماز کا طریقہ (مسنون)", "دعائے ثنا",
+                                "سورہ فاتحہ", "سورہ اخلاص", "قنوت دعا", "تشہد", "درود شریف", "دعائے ختم نماز"
+                            ], key=f"lesson_{key}")
+                            total_lines = st.number_input("کل لائنیں (اگر کوئی ہوں)", min_value=0, value=0, key=f"lines_{key}")
+                            details = st.text_area("تفصیل / نوٹ", key=f"details_{key}")
+                    if st.button(f"محفوظ کریں ({s})", key=f"save_{key}"):
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        chk = c.execute("SELECT 1 FROM qaida_records WHERE r_date=? AND student_id=?", (entry_date, sid)).fetchone()
+                        if chk:
+                            st.error(f"{s} کا ریکارڈ پہلے سے موجود ہے (تاریخ {entry_date})")
+                        else:
+                            c.execute("""INSERT INTO qaida_records 
+                                        (r_date, student_id, t_name, lesson_no, total_lines, details, attendance, cleanliness)
+                                        VALUES (?,?,?,?,?,?,?,?)""",
+                                      (entry_date, sid, st.session_state.username, lesson_no, total_lines, details, att, cleanliness))
+                            conn.commit()
+                            log_audit(st.session_state.username, "Qaida Entry", f"{s} {entry_date}")
+                            st.success("محفوظ ہو گیا")
+                        conn.close()
+                else:
+                    if st.button(f"غیر حاضر / رخصت محفوظ کریں ({s})", key=f"save_absent_{key}"):
+                        conn = get_db_connection()
+                        c = conn.cursor()
+                        chk = c.execute("SELECT 1 FROM qaida_records WHERE r_date=? AND student_id=?", (entry_date, sid)).fetchone()
+                        if chk:
+                            st.error(f"{s} کا ریکارڈ پہلے سے موجود ہے (تاریخ {entry_date})")
+                        else:
+                            c.execute("""INSERT INTO qaida_records 
+                                        (r_date, student_id, t_name, lesson_no, total_lines, details, attendance, cleanliness)
+                                        VALUES (?,?,?,?,?,?,?,?)""",
+                                      (entry_date, sid, st.session_state.username, "غائب", 0, "", att, cleanliness))
+                            conn.commit()
+                            st.success("محفوظ ہو گیا")
+                        conn.close()
+                st.markdown("---")
+    
+    elif dept == "درسِ نظامی":
+        st.subheader("درسِ نظامی سبق ریکارڈ")
+        conn = get_db_connection()
+        students = conn.execute("SELECT id, name, father_name FROM students WHERE teacher_name=? AND dept='درسِ نظامی'", (st.session_state.username,)).fetchall()
+        conn.close()
+        if not students:
+            st.info("کوئی طالب علم نہیں")
+        else:
+            with st.form("dars_form"):
+                records = []
+                for sid, s, f in students:
+                    st.markdown(f"### {s} ولد {f}")
+                    att = st.radio("حاضری", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_dars_{sid}", horizontal=True)
+                    cleanliness = st.selectbox("صفائی کا معیار", cleanliness_options, key=f"clean_dars_{sid}")
+                    if att == "حاضر":
+                        col1, col2 = st.columns(2)
+                        nagha = col1.checkbox("ناغہ", key=f"nagha_dars_{sid}")
+                        yad_nahi = col2.checkbox("یاد نہیں", key=f"yad_dars_{sid}")
+                        if nagha or yad_nahi:
+                            book = "ناغہ" if nagha else "یاد نہیں"
+                            lesson = "ناغہ" if nagha else "یاد نہیں"
+                            perf = "ناغہ" if nagha else "یاد نہیں"
+                        else:
+                            book = st.text_input("کتاب کا نام", key=f"book_{sid}")
+                            lesson = st.text_area("آج کا سبق", key=f"lesson_{sid}")
+                            perf = st.select_slider("کارکردگی", ["بہت بہتر", "بہتر", "مناسب", "کمزور"], key=f"perf_{sid}")
+                        records.append((entry_date, sid, st.session_state.username, "درسِ نظامی", book, lesson, "", perf, att, cleanliness))
+                    else:
+                        records.append((entry_date, sid, st.session_state.username, "درسِ نظامی", "غائب", "غائب", "", "غائب", att, cleanliness))
+                if st.form_submit_button("محفوظ کریں"):
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    for rec in records:
+                        c.execute("INSERT INTO general_education (r_date, student_id, t_name, dept, book_subject, today_lesson, performance, attendance, cleanliness) VALUES (?,?,?,?,?,?,?,?,?)",
+                                  rec)
+                    conn.commit()
+                    conn.close()
+                    st.success("محفوظ ہو گیا")
+    
+    elif dept == "عصری تعلیم":
+        st.subheader("عصری تعلیم ڈائری")
+        conn = get_db_connection()
+        students = conn.execute("SELECT id, name, father_name FROM students WHERE teacher_name=? AND dept='عصری تعلیم'", (st.session_state.username,)).fetchall()
+        conn.close()
+        if not students:
+            st.info("کوئی طالب علم نہیں")
+        else:
+            with st.form("school_form"):
+                records = []
+                for sid, s, f in students:
+                    st.markdown(f"### {s} ولد {f}")
+                    att = st.radio("حاضری", ["حاضر", "غیر حاضر", "رخصت"], key=f"att_school_{sid}", horizontal=True)
+                    cleanliness = st.selectbox("صفائی کا معیار", cleanliness_options, key=f"clean_school_{sid}")
+                    if att == "حاضر":
+                        col1, col2 = st.columns(2)
+                        nagha = col1.checkbox("ناغہ", key=f"nagha_school_{sid}")
+                        yad_nahi = col2.checkbox("یاد نہیں", key=f"yad_school_{sid}")
+                        if nagha or yad_nahi:
+                            subject = "ناغہ" if nagha else "یاد نہیں"
+                            topic = "ناغہ" if nagha else "یاد نہیں"
+                            hw = "ناغہ" if nagha else "یاد نہیں"
+                        else:
+                            subject = st.selectbox("مضمون", ["اردو", "انگلش", "ریاضی", "سائنس", "اسلامیات", "سماجی علوم"], key=f"sub_{sid}")
+                            topic = st.text_input("عنوان", key=f"topic_{sid}")
+                            hw = st.text_area("ہوم ورک", key=f"hw_{sid}")
+                        records.append((entry_date, sid, st.session_state.username, "عصری تعلیم", subject, topic, hw, "", att, cleanliness))
+                    else:
+                        records.append((entry_date, sid, st.session_state.username, "عصری تعلیم", "غائب", "غائب", "غائب", "", att, cleanliness))
+                if st.form_submit_button("محفوظ کریں"):
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    for rec in records:
+                        c.execute("INSERT INTO general_education (r_date, student_id, t_name, dept, book_subject, today_lesson, homework, performance, attendance, cleanliness) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                                  rec)
+                    conn.commit()
+                    conn.close()
+                    st.success("محفوظ ہو گیا")
+
+# 4.2 امتحانی درخواست
+elif selected == "🎓 امتحانی درخواست" and st.session_state.user_type == "teacher":
+    st.subheader("امتحان کے لیے طالب علم نامزد کریں")
+    conn = get_db_connection()
+    students = conn.execute("SELECT id, name, father_name, dept FROM students WHERE teacher_name=?", (st.session_state.username,)).fetchall()
+    conn.close()
+    if not students:
+        st.warning("کوئی طالب علم نہیں")
+    else:
+        with st.form("exam_request"):
+            s_list = [f"{s[1]} ولد {s[2]} ({s[3]})" for s in students]
+            sel = st.selectbox("طالب علم", s_list)
+            s_name, rest = sel.split(" ولد ")
+            f_name, dept = rest.split(" (")
+            dept = dept.replace(")", "")
+            student_id = [s[0] for s in students if s[1] == s_name and s[2] == f_name][0]
+            exam_type = st.selectbox("امتحان کی قسم", ["پارہ ٹیسٹ", "ماہانہ", "سہ ماہی", "سالانہ"])
+            start_date = st.date_input("تاریخ ابتدا", date.today())
+            end_date = st.date_input("تاریخ اختتام", date.today() + timedelta(days=7))
+            total_days = (end_date - start_date).days + 1
+            st.write(f"**کل دن:** {total_days}")
+            from_para = 0
+            to_para = 0
+            book_name = ""
+            amount_read = ""
+            if exam_type == "پارہ ٹیسٹ":
+                col1, col2 = st.columns(2)
+                from_para = col1.number_input("پارہ نمبر (شروع)", min_value=1, max_value=30, value=1)
+                to_para = col2.number_input("پارہ نمبر (اختتام)", min_value=from_para, max_value=30, value=from_para)
+            else:
+                if dept == "حفظ":
+                    col1, col2 = st.columns(2)
+                    from_para = col1.number_input("پارہ نمبر (شروع)", min_value=1, max_value=30, value=1)
+                    to_para = col2.number_input("پارہ نمبر (اختتام)", min_value=from_para, max_value=30, value=min(from_para+4,30))
+                    amount_read = st.text_input("مقدار خواندگی (مثلاً: 5 پارے, 10 سورتیں)", placeholder="مقدار")
+                else:
+                    col1, col2 = st.columns(2)
+                    book_name = col1.text_input("کتاب کا نام", placeholder="مثلاً: نحو میر, قدوری")
+                    amount_read = col2.text_input("مقدار خواندگی", placeholder="مثلاً: باب اول تا باب پنجم")
+            if st.form_submit_button("بھیجیں"):
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute("""INSERT INTO exams 
+                            (student_id, dept, exam_type, from_para, to_para, book_name, amount_read, start_date, end_date, total_days, status)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                          (student_id, dept, exam_type, from_para, to_para, book_name, amount_read, start_date, end_date, total_days, "پینڈنگ"))
+                conn.commit()
+                conn.close()
+                st.success("درخواست بھیج دی گئی")
+
+# 4.3 رخصت کی درخواست
+elif selected == "📩 رخصت کی درخواست" and st.session_state.user_type == "teacher":
+    st.header("📩 رخصت کی درخواست")
+    with st.form("leave_request_form"):
+        l_type = st.selectbox("رخصت کی نوعیت", ["بیماری", "ضروری کام", "ہنگامی", "دیگر"])
+        start_date = st.date_input("تاریخ آغاز", date.today())
+        days = st.number_input("دنوں کی تعداد", min_value=1, max_value=30, value=1)
+        back_date = start_date + timedelta(days=days-1)
+        st.write(f"واپسی کی تاریخ: {back_date}")
+        reason = st.text_area("تفصیلی وجہ")
+        if st.form_submit_button("درخواست جمع کریں"):
+            if reason:
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute("""INSERT INTO leave_requests 
+                            (t_name, l_type, start_date, days, reason, status, notification_seen, request_date)
+                            VALUES (?,?,?,?,?,?,?,?)""",
+                          (st.session_state.username, l_type, start_date, days, reason, "پینڈنگ", 0, date.today()))
+                conn.commit()
+                conn.close()
+                log_audit(st.session_state.username, "Leave Requested", f"{l_type} for {days} days")
+                st.success("درخواست بھیج دی گئی۔ منتظمین جلد جواب دیں گے۔")
+            else:
+                st.error("براہ کرم وجہ تحریر کریں")
+
+# 4.4 میری حاضری
+elif selected == "🕒 میری حاضری" and st.session_state.user_type == "teacher":
+    st.header("🕒 میری حاضری")
+    today = date.today()
+    conn = get_db_connection()
+    rec = conn.execute("SELECT arrival, departure FROM t_attendance WHERE t_name=? AND a_date=?", (st.session_state.username, today)).fetchone()
+    conn.close()
+    if not rec:
+        col1, col2 = st.columns(2)
+        arr_date = col1.date_input("تاریخ", today)
+        arr_time = col2.time_input("آمد کا وقت", datetime.now().time())
+        if st.button("آمد درج کریں"):
+            time_str = arr_time.strftime("%I:%M %p")
+            conn = get_db_connection()
+            conn.execute("INSERT INTO t_attendance (t_name, a_date, arrival, actual_arrival) VALUES (?,?,?,?)",
+                         (st.session_state.username, arr_date, time_str, get_pk_time()))
+            conn.commit()
+            conn.close()
+            st.success("آمد درج ہو گئی")
+            st.rerun()
+    elif rec and rec[1] is None:
+        st.success(f"آمد: {rec[0]}")
+        dep_time = st.time_input("رخصت کا وقت", datetime.now().time())
+        if st.button("رخصت درج کریں"):
+            time_str = dep_time.strftime("%I:%M %p")
+            conn = get_db_connection()
+            conn.execute("UPDATE t_attendance SET departure=?, actual_departure=? WHERE t_name=? AND a_date=?",
+                         (time_str, get_pk_time(), st.session_state.username, today))
+            conn.commit()
+            conn.close()
+            st.success("رخصت درج ہو گئی")
+            st.rerun()
+    else:
+        st.success(f"آمد: {rec[0]} | رخصت: {rec[1]}")
+
+# 4.5 میرا ٹائم ٹیبل
+elif selected == "📚 میرا ٹائم ٹیبل" and st.session_state.user_type == "teacher":
+    st.header("📚 میرا ٹائم ٹیبل")
+    conn = get_db_connection()
+    tt_df = pd.read_sql_query("SELECT day as دن, period as وقت, book as کتاب, room as کمرہ FROM timetable WHERE t_name=?", conn, params=(st.session_state.username,))
+    conn.close()
+    if tt_df.empty:
+        st.info("ابھی آپ کا ٹائم ٹیبل ترتیب نہیں دیا گیا")
+    else:
+        day_order = {"ہفتہ": 0, "اتوار": 1, "پیر": 2, "منگل": 3, "بدھ": 4, "جمعرات": 5}
+        tt_df['day_order'] = tt_df['دن'].map(day_order)
+        tt_df = tt_df.sort_values(['day_order', 'وقت'])
+        pivot = tt_df.pivot(index='وقت', columns='دن', values='کتاب').fillna("—")
+        st.dataframe(pivot, use_container_width=True)
+        html_timetable = generate_timetable_html(tt_df)
+        st.download_button("📥 HTML ڈاؤن لوڈ کریں", html_timetable, f"Timetable_{st.session_state.username}.html", "text/html")
+        if st.button("🖨️ پرنٹ کریں"):
+            st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html_timetable}`);w.print();</script>", height=0)
+
+# ==================== لاگ آؤٹ ====================
+st.sidebar.divider()
+if st.sidebar.button("🚪 لاگ آؤٹ"):
+    st.session_state.logged_in = False
+    st.rerun()
+
+# ==================== SUPABASE منتقلی کے لیے اضافی فنکشنز (اختیاری) ====================
+# یہ کوڈ صرف اس صورت میں استعمال کریں جب آپ SQLite ڈیٹا کو Supabase (PostgreSQL) میں منتقل کرنا چاہتے ہیں۔
+# اسے الگ سے چلایا جا سکتا ہے۔
+
+def migrate_sqlite_to_supabase():
+    """
+    یہ فنکشن SQLite ڈیٹا بیس سے ڈیٹا پڑھ کر Supabase میں داخل کرتا ہے۔
+    اس کے لیے آپ کو supabase-py لائبریری انسٹال کرنی ہوگی: pip install supabase
+    """
+    try:
+        from supabase import create_client, Client
+    except ImportError:
+        st.error("براہ کرم supabase لائبریری انسٹال کریں: pip install supabase")
+        return
+    
+    # Supabase کنفیگریشن (اپنی کریڈینشلز یہاں ڈالیں)
+    SUPABASE_URL = st.secrets.get("SUPABASE_URL", "your_supabase_url")
+    SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "your_supabase_anon_key")
+    
+    if not SUPABASE_URL or not SUPABASE_KEY or "your_" in SUPABASE_URL:
+        st.error("براہ کرم .streamlit/secrets.toml میں Supabase کریڈینشلز سیٹ کریں")
+        return
+    
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    
+    # SQLite سے ڈیٹا حاصل کریں
+    conn = get_db_connection()
+    
+    tables = [
+        "teachers", "students", "hifz_records", "qaida_records", "general_education",
+        "t_attendance", "leave_requests", "exams", "passed_paras", "timetable",
+        "notifications", "audit_log", "staff_monitoring"
+    ]
+    
+    for table in tables:
+        st.write(f"مائیگریٹ کر رہا ہے: {table}")
+        df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
+        if df.empty:
+            continue
+        
+        # SQLite کے کچھ ڈیٹا ٹائپس کو Supabase/PostgreSQL کے لیے کنورٹ کریں
+        for col in df.columns:
+            if 'date' in col.lower() or col in ['dob', 'admission_date', 'exit_date', 'joining_date', 'start_date', 'end_date', 'passed_date', 'request_date']:
+                df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
+            elif df[col].dtype == 'object':
+                df[col] = df[col].fillna('')
+            else:
+                df[col] = df[col].fillna(0)
+        
+        # ڈیٹا کو Supabase میں داخل کریں (بیچز میں)
+        data = df.to_dict(orient='records')
+        batch_size = 100
+        for i in range(0, len(data), batch_size):
+            batch = data[i:i+batch_size]
+            try:
+                response = supabase.table(table).insert(batch).execute()
+                if hasattr(response, 'error') and response.error:
+                    st.warning(f"{table} میں اندراج کی خرابی: {response.error}")
+                else:
+                    st.success(f"{table}: {len(batch)} ریکارڈ داخل ہوئے")
+            except Exception as e:
+                st.error(f"{table}: {str(e)}")
+    
+    conn.close()
+    st.success("مائیگریشن مکمل!")
+
+# اگر آپ چاہیں تو اس بٹن کو ایڈمن سیٹنگز میں شامل کر سکتے ہیں
+if selected == "⚙️ بیک اپ & سیٹنگز" and st.session_state.user_type == "admin":
+    st.markdown("---")
+    st.subheader("☁️ Supabase میں مائیگریٹ کریں")
+    st.warning("یہ آپریشن موجودہ Supabase ڈیٹا کو اوور رائٹ کر سکتا ہے۔ پہلے بیک اپ لیں۔")
+    if st.button("🚀 Supabase میں ڈیٹا منتقل کریں"):
+        migrate_sqlite_to_supabase()
+        
