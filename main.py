@@ -180,40 +180,42 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+import hashlib
+
+def hash_password(password):
+    """پاسورڈ کو SHA256 ہیش میں تبدیل کریں۔ کوئی اضافی اسپیس یا انکوڈنگ کی خرابی نہیں ہونی چاہیے۔"""
+    # یقینی بنائیں کہ پاسورڈ سٹرنگ ہے اور اس کے آگے پیچھے اسپیس نہیں
+    password = str(password).strip()
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
 def verify_login(username, password):
     try:
-        # 1. یوزر ڈھونڈیں
+        # 1. Supabase سے یوزر حاصل کریں
         res = supabase.table("teachers").select("*").eq("name", username).execute()
         if not res.data:
-            st.error(f"❌ صارف '{username}' موجود نہیں۔")
             return False
         
         user_record = res.data[0]
         stored_password = user_record.get('password', '')
         
-        # 2. ان پٹ پاسورڈ اور اس کی ہیش دکھائیں
-        input_hashed = hash_password(password)
+        # 2. ان پٹ پاسورڈ کو صاف کر کے ہیش کریں
+        cleaned_password = str(password).strip()
+        input_hashed = hash_password(cleaned_password)
         
-        st.write("### 🔍 ڈیبگ معلومات")
-        st.write(f"**ان پٹ پاسورڈ:** `{password}`")
-        st.write(f"**ان پٹ کی ہیش:** `{input_hashed}`")
-        st.write(f"**Supabase میں محفوظ ہیش:** `{stored_password}`")
-        st.write(f"**دونوں برابر ہیں؟** `{stored_password == input_hashed}`")
-        st.write(f"**لمبائی:** محفوظ={len(stored_password)}, ان پٹ={len(input_hashed)}")
-        
-        # 3. چیک کریں
-        if stored_password == password or stored_password == input_hashed:
-            st.success("✅ پاسورڈ درست ہے!")
+        # 3. موازنہ (پلین پاسورڈ اور ہیش دونوں چیک کریں)
+        if stored_password == cleaned_password or stored_password == input_hashed:
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.user_type = "admin" if username == "admin" else "teacher"
+            log_audit(username, "Login", f"User type: {st.session_state.user_type}")
             return True
         else:
-            st.error("❌ پاسورڈ میچ نہیں ہوا۔")
+            # اگر پھر بھی ناکام ہو تو ڈیبگ کے لیے ہیشز دکھائیں (عارضی)
+            st.error(f"پاسورڈ میچ نہیں ہوا۔ ان پٹ ہیش: {input_hashed[:20]}... محفوظ ہیش: {stored_password[:20]}...")
             return False
             
     except Exception as e:
-        st.error(f"❌ خرابی: {str(e)}")
+        st.error(f"لاگ ان میں خرابی: {str(e)}")
         return False
 # ==================== لاگ ان سسٹم ====================
 def verify_login(username, password):
