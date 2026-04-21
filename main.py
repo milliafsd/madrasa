@@ -133,32 +133,15 @@ st.markdown("""
 def verify_login(username, password):
     try:
         hashed_input = hash_password(password)
-        res = supabase.table("teachers").select("*").eq("name", username).execute()
-        
-        if not res.data:
-            st.error(f"❌ صارف '{username}' موجود نہیں")
-            return None
-            
-        stored = res.data[0]['password']
-        
-        # ڈیبگ معلومات
-        st.write("### 🔍 ڈیبگ معلومات")
-        st.write(f"**آپ کا پاسورڈ:** `{password}`")
-        st.write(f"**اس کی ہیش:** `{hashed_input}`")
-        st.write(f"**Supabase میں محفوظ ہیش:** `{stored}`")
-        st.write(f"**دونوں برابر؟** `{stored == hashed_input}`")
-        
-        if stored == hashed_input or stored == password:
+        res = supabase.table("teachers").select("*").eq("name", username).eq("password", hashed_input).execute()
+        if res.data:
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.user_type = "admin" if username == "admin" else "teacher"
-            return res.data[0]
-        else:
-            st.error("❌ پاسورڈ میچ نہیں ہوا")
-            return None
-    except Exception as e:
-        st.error(f"خرابی: {e}")
-        return None
+            return True
+        return False
+    except:
+        return False
 
 # لاگ ان اسکرین
 if not st.session_state.logged_in:
