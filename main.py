@@ -197,7 +197,7 @@ def verify_login(username, password):
             st.session_state.user_type = "admin" if username == "admin" else "teacher"
             return True
         return False
-    except:
+        except:
         return False
         
         stored_password = res.data[0].get('password', '')
