@@ -130,7 +130,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== لاگ ان ====================
-f verify_login(username, password):
+def verify_login(username, password):
     try:
         hashed_input = hash_password(password)
         res = supabase.table("teachers").select("*").eq("name", username).execute()
