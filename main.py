@@ -153,7 +153,7 @@ def verify_login(username, password):
         
         st.success(f"✅ لاگ ان کامیاب! آپ {st.session_state.user_type} ہیں۔")
         return True
-        if st.button("داخل ہوں"):
+    if st.button("داخل ہوں"):
     if verify_login(u, p):  # <-- اب True/False واپس آتا ہے
         st.rerun()          # <-- صرف اس صورت میں ری رن کریں جب کامیاب ہو
     else:
