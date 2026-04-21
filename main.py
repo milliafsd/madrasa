@@ -131,19 +131,33 @@ st.markdown("""
 
 # ==================== لاگ ان ====================
 def verify_login(username, password):
-    """لاگ ان کی تصدیق - پہلے ہیش پھر پلین چیک کرتا ہے"""
     try:
-        # ہیشڈ پاسورڈ سے چیک کریں
         hashed_input = hash_password(password)
-        res = supabase.table("teachers").select("*").eq("name", username).eq("password", hashed_input).execute()
-        if res.data:
+        res = supabase.table("teachers").select("*").eq("name", username).execute()
+        
+        if not res.data:
+            st.error(f"❌ صارف '{username}' موجود نہیں")
+            return None
+            
+        stored = res.data[0]['password']
+        
+        # ڈیبگ معلومات
+        st.write("### 🔍 ڈیبگ معلومات")
+        st.write(f"**آپ کا پاسورڈ:** `{password}`")
+        st.write(f"**اس کی ہیش:** `{hashed_input}`")
+        st.write(f"**Supabase میں محفوظ ہیش:** `{stored}`")
+        st.write(f"**دونوں برابر؟** `{stored == hashed_input}`")
+        
+        if stored == hashed_input or stored == password:
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.session_state.user_type = "admin" if username == "admin" else "teacher"
             return res.data[0]
-        # پلین پاسورڈ سے چیک کریں (بیک اپ)
-        res = supabase.table("teachers").select("*").eq("name", username).eq("password", password).execute()
-        if res.data:
-            return res.data[0]
-        return None
-    except:
+        else:
+            st.error("❌ پاسورڈ میچ نہیں ہوا")
+            return None
+    except Exception as e:
+        st.error(f"خرابی: {e}")
         return None
 
 # سیشن اسٹیٹ انیشیلائز
