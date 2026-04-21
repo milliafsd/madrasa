@@ -188,17 +188,19 @@ print(hash_password("jamia123"))
 import hashlib
 
 # ==================== لاگ ان سسٹم ====================
-def verify_login(username, password):
-    try:
-        # پہلے پلین پاسورڈ سے چیک کریں (اگر کبھی کسی کا پاسورڈ ہیش نہ ہوا ہو)
-        res = supabase.table("teachers").select("*").eq("name", username).eq("password", password).execute()
-        if res.data:
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.session_state.user_type = "admin" if username == "admin" else "teacher"
-            return True
+import hashlib
+
+def hash_password(password):
+    # 1. یقینی بنائیں کہ پاسورڈ سٹرنگ ہے
+    password = str(password)
+    # 2. آگے پیچھے کی خالی جگہیں (spaces) ہٹا دیں
+    password = password.strip()
+    # 3. UTF-8 انکوڈنگ کے ساتھ SHA256 ہیش بنائیں
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
         
-        # پلین پاسورڈ نہ ملا تو ہیشڈ پاسورڈ سے چیک کریں
+      def verify_login(username, password):
+    try:
+        # پہلے ہیشڈ پاسورڈ سے چیک کریں (عام طریقہ)
         hashed_input = hash_password(password)
         res = supabase.table("teachers").select("*").eq("name", username).eq("password", hashed_input).execute()
         if res.data:
@@ -207,32 +209,17 @@ def verify_login(username, password):
             st.session_state.user_type = "admin" if username == "admin" else "teacher"
             return True
         
-        # دونوں صورتوں میں نہ ملا
-        return False
-        
-    except Exception as e:
-        # کسی بھی غیر متوقع ایرر کی صورت میں False واپس کریں
-        st.error(f"لاگ ان میں خرابی: {str(e)}")
-        return False
-        # موازنہ
-        if stored_password == password or stored_password == input_hashed:
+        # اگر ہیش سے نہ ملے تو پلین پاسورڈ سے چیک کریں (بیک اپ)
+        res = supabase.table("teachers").select("*").eq("name", username).eq("password", password).execute()
+        if res.data:
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.user_type = "admin" if username == "admin" else "teacher"
-            log_audit(username, "Login", f"User type: {st.session_state.user_type}")
             return True
+        
         return False
     except:
         return False
-
-# سیشن اسٹیٹ کی ابتدائی حالت
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "username" not in st.session_state:
-    st.session_state.username = ""
-if "user_type" not in st.session_state:
-    st.session_state.user_type = ""   # <-- یہ ضروری ہے تاکہ AttributeError نہ آئے
-
 # اگر لاگ ان نہیں ہے تو لاگ ان فارم دکھائیں
 if not st.session_state.logged_in:
     st.markdown("<div class='main-header'><h1>🕌 جامعہ ملیہ اسلامیہ فیصل آباد</h1><p>اسمارٹ تعلیمی و انتظامی پورٹل</p></div>", unsafe_allow_html=True)
