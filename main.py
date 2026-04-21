@@ -135,7 +135,7 @@ def verify_login(username, password):
         res = supabase.table("teachers").select("*").eq("name", username).execute()
         if not res.data:
             st.error(f"❌ صارف '{username}' Supabase میں موجود نہیں۔")
-            return False  # <-- تبدیلی: اب False واپس کریں
+            return False
         
         user_record = res.data[0]
         stored_password = user_record.get('password', '')
@@ -153,17 +153,12 @@ def verify_login(username, password):
         
         st.success(f"✅ لاگ ان کامیاب! آپ {st.session_state.user_type} ہیں۔")
         return True
-    if st.button("داخل ہوں"):
-    if verify_login(u, p):  # <-- اب True/False واپس آتا ہے
-        st.rerun()          # <-- صرف اس صورت میں ری رن کریں جب کامیاب ہو
-    else:
-        st.error("لاگ ان ناکام۔ براہ کرم دوبارہ کوشش کریں۔")
+        
     except Exception as e:
         st.error(f"❌ Supabase استفسار میں خرابی: {str(e)}")
         import traceback
         st.code(traceback.format_exc())
         return False
-        
 # ==================== مینو ====================
 if st.session_state.user_type == "admin":
     menu = ["📊 ایڈمن ڈیش بورڈ", "📊 یومیہ تعلیمی رپورٹ", "🎓 امتحانی نظام", "📜 ماہانہ رزلٹ کارڈ",
