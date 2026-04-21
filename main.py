@@ -187,59 +187,26 @@ def hash_password(password):
 print(hash_password("jamia123"))
 import hashlib
 
+# ==================== لاگ ان سسٹم ====================
 def verify_login(username, password):
     try:
-        # 1. Supabase سے یوزر حاصل کریں
+        # Supabase سے یوزر حاصل کریں
         res = supabase.table("teachers").select("*").eq("name", username).execute()
         if not res.data:
             return False
         
-        user_record = res.data[0]
-        stored_password = user_record.get('password', '')
+        stored_password = res.data[0].get('password', '')
+        input_hashed = hash_password(password)
         
-        # 2. ان پٹ پاسورڈ کو صاف کر کے ہیش کریں
-        cleaned_password = str(password).strip()
-        input_hashed = hash_password(cleaned_password)
-        
-        # 3. موازنہ (پلین پاسورڈ اور ہیش دونوں چیک کریں)
-        if stored_password == cleaned_password or stored_password == input_hashed:
+        # موازنہ
+        if stored_password == password or stored_password == input_hashed:
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.user_type = "admin" if username == "admin" else "teacher"
             log_audit(username, "Login", f"User type: {st.session_state.user_type}")
             return True
-        else:
-            # اگر پھر بھی ناکام ہو تو ڈیبگ کے لیے ہیشز دکھائیں (عارضی)
-            st.error(f"پاسورڈ میچ نہیں ہوا۔ ان پٹ ہیش: {input_hashed[:20]}... محفوظ ہیش: {stored_password[:20]}...")
-            return False
-            
-    except Exception as e:
-        st.error(f"لاگ ان میں خرابی: {str(e)}")
         return False
-# ==================== لاگ ان سسٹم ====================
-def verify_login(username, password):
-    try:
-        res = supabase.table("teachers").select("*").eq("name", username).execute()
-        if not res.data:
-            st.error(f"❌ صارف '{username}' موجود نہیں۔")
-            return False
-        
-        user_record = res.data[0]
-        stored_password = user_record.get('password', '')
-        input_hashed = hash_password(password)
-        
-        if stored_password != password and stored_password != input_hashed:
-            st.error("❌ پاسورڈ غلط ہے۔")
-            return False
-        
-        st.session_state.logged_in = True
-        st.session_state.username = username
-        st.session_state.user_type = "admin" if username == "admin" else "teacher"
-        st.success(f"✅ لاگ ان کامیاب! آپ {st.session_state.user_type} ہیں۔")
-        return True
-        
-    except Exception as e:
-        st.error(f"❌ Supabase استفسار میں خرابی: {str(e)}")
+    except:
         return False
 
 # سیشن اسٹیٹ کی ابتدائی حالت
