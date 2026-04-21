@@ -10,59 +10,7 @@ import shutil
 import zipfile
 import io
 from supabase import create_client, Client
-import streamlit as st
-from supabase import create_client
 
-st.set_page_config(page_title="Supabase ٹیسٹ")
-
-url = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
-key = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
-supabase = create_client(url, key)
-
-st.title("🔧 Supabase کنکشن ٹیسٹ")
-
-# 1. Secrets چیک کریں
-st.subheader("1. Secrets")
-st.write(f"URL: `{url[:30]}...`")
-st.write(f"Key: `{key[:30]}...`")
-
-# 2. teachers ٹیبل سے admin ڈھونڈیں
-st.subheader("2. teachers ٹیبل میں admin تلاش کریں")
-try:
-    res = supabase.table("teachers").select("*").eq("name", "admin").execute()
-    if res.data:
-        st.success("✅ admin یوزر ملا!")
-        user = res.data[0]
-        st.write(f"**Name:** {user.get('name')}")
-        st.write(f"**Dept:** {user.get('dept')}")
-        st.write(f"**Password Hash:** `{user.get('password', '')[:30]}...`")
-    else:
-        st.error("❌ admin یوزر نہیں ملا۔ یا تو ٹیبل موجود نہیں یا RLS فعال ہے۔")
-except Exception as e:
-    st.error(f"❌ استفسار میں خرابی: {e}")
-
-# 3. ہیش ٹیسٹ
-st.subheader("3. پاسورڈ ہیش ٹیسٹ")
-import hashlib
-test_password = "jamia123"
-test_hash = hashlib.sha256(test_password.encode()).hexdigest()
-st.write(f"`{test_password}` کی ہیش: `{test_hash[:30]}...`")
-
-# 4. لاگ ان سیمولیشن
-st.subheader("4. لاگ ان سیمولیشن")
-if st.button("لاگ ان ٹیسٹ کریں"):
-    try:
-        res = supabase.table("teachers").select("*").eq("name", "admin").execute()
-        if res.data:
-            stored = res.data[0]['password']
-            if stored == test_password or stored == test_hash:
-                st.success("✅ لاگ ان کامیاب ہوگا!")
-            else:
-                st.error("❌ پاسورڈ میچ نہیں ہوا۔")
-                st.write(f"محفوظ ہیش: `{stored}`")
-                st.write(f"ان پٹ ہیش: `{test_hash}`")
-    except Exception as e:
-        st.error(f"خرابی: {e}")
 # ==================== SUPABASE کنکشن ====================
 @st.cache_resource
 def init_supabase():
@@ -77,7 +25,8 @@ except Exception as e:
     st.stop()
 
 def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+    """SHA256 ہیش بنائیں - تمام اضافی اسپیس ہٹا کر"""
+    return hashlib.sha256(str(password).strip().encode('utf-8')).hexdigest()
 
 # ==================== ہیلپر فنکشنز ====================
 def log_audit(user, action, details=""):
@@ -179,48 +128,33 @@ st.markdown("""
     @media (max-width: 768px) { .stButton > button { padding: 0.4rem 0.8rem; font-size: 0.8rem; } .main-header h1 { font-size: 1.5rem; } }
 </style>
 """, unsafe_allow_html=True)
-import hashlib
 
-def hash_password(password):
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
-
-print(hash_password("jamia123"))
-import hashlib
-
-# ==================== لاگ ان سسٹم ====================
-import hashlib
-
-def hash_password(password):
-    # 1. یقینی بنائیں کہ پاسورڈ سٹرنگ ہے
-    password = str(password)
-    # 2. آگے پیچھے کی خالی جگہیں (spaces) ہٹا دیں
-    password = password.strip()
-    # 3. UTF-8 انکوڈنگ کے ساتھ SHA256 ہیش بنائیں
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
-        
-      def verify_login(username, password):
+# ==================== لاگ ان ====================
+def verify_login(username, password):
+    """لاگ ان کی تصدیق - پہلے ہیش پھر پلین چیک کرتا ہے"""
     try:
-        # پہلے ہیشڈ پاسورڈ سے چیک کریں (عام طریقہ)
+        # ہیشڈ پاسورڈ سے چیک کریں
         hashed_input = hash_password(password)
         res = supabase.table("teachers").select("*").eq("name", username).eq("password", hashed_input).execute()
         if res.data:
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.session_state.user_type = "admin" if username == "admin" else "teacher"
-            return True
-        
-        # اگر ہیش سے نہ ملے تو پلین پاسورڈ سے چیک کریں (بیک اپ)
+            return res.data[0]
+        # پلین پاسورڈ سے چیک کریں (بیک اپ)
         res = supabase.table("teachers").select("*").eq("name", username).eq("password", password).execute()
         if res.data:
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.session_state.user_type = "admin" if username == "admin" else "teacher"
-            return True
-        
-        return False
+            return res.data[0]
+        return None
     except:
-        return False
-# اگر لاگ ان نہیں ہے تو لاگ ان فارم دکھائیں
+        return None
+
+# سیشن اسٹیٹ انیشیلائز
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+if "user_type" not in st.session_state:
+    st.session_state.user_type = ""
+
+# لاگ ان اسکرین
 if not st.session_state.logged_in:
     st.markdown("<div class='main-header'><h1>🕌 جامعہ ملیہ اسلامیہ فیصل آباد</h1><p>اسمارٹ تعلیمی و انتظامی پورٹل</p></div>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,1.5,1])
@@ -230,15 +164,18 @@ if not st.session_state.logged_in:
             u = st.text_input("صارف نام")
             p = st.text_input("پاسورڈ", type="password")
             if st.button("داخل ہوں"):
-                if verify_login(u, p):
+                res = verify_login(u, p)
+                if res:
+                    st.session_state.logged_in = True
+                    st.session_state.username = u
+                    st.session_state.user_type = "admin" if u == "admin" else "teacher"
+                    log_audit(u, "Login", f"User type: {st.session_state.user_type}")
                     st.rerun()
                 else:
-                    st.error("لاگ ان ناکام۔ براہ کرم دوبارہ کوشش کریں۔")
+                    st.error("غلط صارف نام یا پاسورڈ")
             st.markdown("</div>", unsafe_allow_html=True)
-    st.stop()   # <-- یہ یقینی بناتا ہے کہ نیچے کا کوڈ لاگ ان کے بغیر نہ چلے
+    st.stop()
 
-# اگر لاگ ان کامیاب ہے تو باقی ایپ چلائیں
-st.sidebar.success(f"👤 خوش آمدید، {st.session_state.username} ({st.session_state.user_type})")
 # ==================== مینو ====================
 if st.session_state.user_type == "admin":
     menu = ["📊 ایڈمن ڈیش بورڈ", "📊 یومیہ تعلیمی رپورٹ", "🎓 امتحانی نظام", "📜 ماہانہ رزلٹ کارڈ",
@@ -248,6 +185,7 @@ if st.session_state.user_type == "admin":
 else:
     menu = ["📝 روزانہ سبق اندراج", "🎓 امتحانی درخواست", "📩 رخصت کی درخواست",
             "🕒 میری حاضری", "📚 میرا ٹائم ٹیبل", "🔑 پاسورڈ تبدیل کریں", "📢 نوٹیفیکیشنز"]
+
 selected = st.sidebar.radio("📌 مینو", menu)
 
 # ==================== ڈیٹا ====================
