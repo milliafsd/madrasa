@@ -190,19 +190,30 @@ import hashlib
 # ==================== لاگ ان سسٹم ====================
 def verify_login(username, password):
     try:
+        # پہلے پلین پاسورڈ سے چیک کریں (اگر کبھی کسی کا پاسورڈ ہیش نہ ہوا ہو)
         res = supabase.table("teachers").select("*").eq("name", username).eq("password", password).execute()
         if res.data:
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.user_type = "admin" if username == "admin" else "teacher"
             return True
-        return False
-        except:
+        
+        # پلین پاسورڈ نہ ملا تو ہیشڈ پاسورڈ سے چیک کریں
+        hashed_input = hash_password(password)
+        res = supabase.table("teachers").select("*").eq("name", username).eq("password", hashed_input).execute()
+        if res.data:
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.session_state.user_type = "admin" if username == "admin" else "teacher"
+            return True
+        
+        # دونوں صورتوں میں نہ ملا
         return False
         
-        stored_password = res.data[0].get('password', '')
-        input_hashed = hash_password(password)
-        
+    except Exception as e:
+        # کسی بھی غیر متوقع ایرر کی صورت میں False واپس کریں
+        st.error(f"لاگ ان میں خرابی: {str(e)}")
+        return False
         # موازنہ
         if stored_password == password or stored_password == input_hashed:
             st.session_state.logged_in = True
