@@ -10,7 +10,59 @@ import shutil
 import zipfile
 import io
 from supabase import create_client, Client
+import streamlit as st
+from supabase import create_client
 
+st.set_page_config(page_title="Supabase ٹیسٹ")
+
+url = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
+key = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
+supabase = create_client(url, key)
+
+st.title("🔧 Supabase کنکشن ٹیسٹ")
+
+# 1. Secrets چیک کریں
+st.subheader("1. Secrets")
+st.write(f"URL: `{url[:30]}...`")
+st.write(f"Key: `{key[:30]}...`")
+
+# 2. teachers ٹیبل سے admin ڈھونڈیں
+st.subheader("2. teachers ٹیبل میں admin تلاش کریں")
+try:
+    res = supabase.table("teachers").select("*").eq("name", "admin").execute()
+    if res.data:
+        st.success("✅ admin یوزر ملا!")
+        user = res.data[0]
+        st.write(f"**Name:** {user.get('name')}")
+        st.write(f"**Dept:** {user.get('dept')}")
+        st.write(f"**Password Hash:** `{user.get('password', '')[:30]}...`")
+    else:
+        st.error("❌ admin یوزر نہیں ملا۔ یا تو ٹیبل موجود نہیں یا RLS فعال ہے۔")
+except Exception as e:
+    st.error(f"❌ استفسار میں خرابی: {e}")
+
+# 3. ہیش ٹیسٹ
+st.subheader("3. پاسورڈ ہیش ٹیسٹ")
+import hashlib
+test_password = "jamia123"
+test_hash = hashlib.sha256(test_password.encode()).hexdigest()
+st.write(f"`{test_password}` کی ہیش: `{test_hash[:30]}...`")
+
+# 4. لاگ ان سیمولیشن
+st.subheader("4. لاگ ان سیمولیشن")
+if st.button("لاگ ان ٹیسٹ کریں"):
+    try:
+        res = supabase.table("teachers").select("*").eq("name", "admin").execute()
+        if res.data:
+            stored = res.data[0]['password']
+            if stored == test_password or stored == test_hash:
+                st.success("✅ لاگ ان کامیاب ہوگا!")
+            else:
+                st.error("❌ پاسورڈ میچ نہیں ہوا۔")
+                st.write(f"محفوظ ہیش: `{stored}`")
+                st.write(f"ان پٹ ہیش: `{test_hash}`")
+    except Exception as e:
+        st.error(f"خرابی: {e}")
 # ==================== SUPABASE کنکشن ====================
 @st.cache_resource
 def init_supabase():
