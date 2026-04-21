@@ -128,6 +128,41 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def verify_login(username, password):
+    try:
+        # 1. یوزر ڈھونڈیں
+        res = supabase.table("teachers").select("*").eq("name", username).execute()
+        if not res.data:
+            st.error(f"❌ صارف '{username}' موجود نہیں۔")
+            return False
+        
+        user_record = res.data[0]
+        stored_password = user_record.get('password', '')
+        
+        # 2. ان پٹ پاسورڈ اور اس کی ہیش دکھائیں
+        input_hashed = hash_password(password)
+        
+        st.write("### 🔍 ڈیبگ معلومات")
+        st.write(f"**ان پٹ پاسورڈ:** `{password}`")
+        st.write(f"**ان پٹ کی ہیش:** `{input_hashed}`")
+        st.write(f"**Supabase میں محفوظ ہیش:** `{stored_password}`")
+        st.write(f"**دونوں برابر ہیں؟** `{stored_password == input_hashed}`")
+        st.write(f"**لمبائی:** محفوظ={len(stored_password)}, ان پٹ={len(input_hashed)}")
+        
+        # 3. چیک کریں
+        if stored_password == password or stored_password == input_hashed:
+            st.success("✅ پاسورڈ درست ہے!")
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.session_state.user_type = "admin" if username == "admin" else "teacher"
+            return True
+        else:
+            st.error("❌ پاسورڈ میچ نہیں ہوا۔")
+            return False
+            
+    except Exception as e:
+        st.error(f"❌ خرابی: {str(e)}")
+        return False
 # ==================== لاگ ان سسٹم ====================
 def verify_login(username, password):
     try:
