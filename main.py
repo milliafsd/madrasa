@@ -14,7 +14,6 @@ import os
 import io
 import zipfile
 from supabase import create_client, Client
-
 # ==================== SUPABASE کلائنٹ ====================
 @st.cache_resource
 def init_supabase():
