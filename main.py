@@ -179,14 +179,13 @@ st.markdown("""
     @media (max-width: 768px) { .stButton > button { padding: 0.4rem 0.8rem; font-size: 0.8rem; } .main-header h1 { font-size: 1.5rem; } }
 </style>
 """, unsafe_allow_html=True)
-
 import hashlib
 
 def hash_password(password):
-    """پاسورڈ کو SHA256 ہیش میں تبدیل کریں۔ کوئی اضافی اسپیس یا انکوڈنگ کی خرابی نہیں ہونی چاہیے۔"""
-    # یقینی بنائیں کہ پاسورڈ سٹرنگ ہے اور اس کے آگے پیچھے اسپیس نہیں
-    password = str(password).strip()
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+print(hash_password("jamia123"))
+import hashlib
 
 def verify_login(username, password):
     try:
