@@ -131,32 +131,33 @@ st.markdown("""
 # ==================== لاگ ان ====================
 def verify_login(username, password):
     try:
-        res = supabase.table("teachers").select("*").eq("name", username).eq("password", password).execute()
-        if res.data: return res.data[0]
-        hashed = hash_password(password)
-        res = supabase.table("teachers").select("*").eq("name", username).eq("password", hashed).execute()
-        return res.data[0] if res.data else None
-    except: return None
-
-if "logged_in" not in st.session_state: st.session_state.logged_in = False
-if not st.session_state.logged_in:
-    st.markdown("<div class='main-header'><h1>🕌 جامعہ ملیہ اسلامیہ فیصل آباد</h1><p>اسمارٹ تعلیمی و انتظامی پورٹل</p></div>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1,1.5,1])
-    with col2:
-        with st.container():
-            st.markdown("<div class='report-card'><h3>🔐 لاگ ان</h3>", unsafe_allow_html=True)
-            u = st.text_input("صارف نام")
-            p = st.text_input("پاسورڈ", type="password")
-            if st.button("داخل ہوں"):
-                res = verify_login(u, p)
-                if res:
-                    st.session_state.logged_in, st.session_state.username = True, u
-                    st.session_state.user_type = "admin" if u == "admin" else "teacher"
-                    log_audit(u, "Login", f"User type: {st.session_state.user_type}")
-                    st.rerun()
-                else: st.error("غلط معلومات")
-            st.markdown("</div>", unsafe_allow_html=True)
-    st.stop()
+        # 1. پہلے چیک کریں کہ کیا ٹیبل میں ایسا یوزر موجود ہے (پاسورڈ دیکھے بغیر)
+        res = supabase.table("teachers").select("name, password", count="exact").eq("name", username).execute()
+        
+        if not res.data:
+            st.error(f"❌ صارف '{username}' Supabase میں موجود نہیں ہے۔")
+            return None
+            
+        stored_password = res.data[0].get('password', '')
+        st.info(f"🔍 Supabase میں محفوظ ہیش: {stored_password[:20]}...")
+        
+        # 2. ان پٹ پاسورڈ کی ہیش بنائیں اور دکھائیں
+        hashed_input = hash_password(password)
+        st.info(f"🔍 ان پٹ پاسورڈ کی ہیش: {hashed_input[:20]}...")
+        
+        # 3. دونوں کا موازنہ کریں
+        if stored_password == password or stored_password == hashed_input:
+            st.success("✅ پاسورڈ درست ہے!")
+            return res.data[0]
+        else:
+            st.error("❌ پاسورڈ غلط ہے۔")
+            return None
+            
+    except Exception as e:
+        st.error(f"❌ Supabase استفسار میں خرابی: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+        return None
 
 # ==================== مینو ====================
 if st.session_state.user_type == "admin":
