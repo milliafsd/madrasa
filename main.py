@@ -128,37 +128,59 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==================== لاگ ان ====================
+# ==================== لاگ ان سسٹم ====================
 def verify_login(username, password):
     try:
-        # 1. یوزر کو ڈھونڈیں
         res = supabase.table("teachers").select("*").eq("name", username).execute()
         if not res.data:
-            st.error(f"❌ صارف '{username}' Supabase میں موجود نہیں۔")
+            st.error(f"❌ صارف '{username}' موجود نہیں۔")
             return False
         
         user_record = res.data[0]
         stored_password = user_record.get('password', '')
-        
-        # 2. پاسورڈ چیک کریں
         input_hashed = hash_password(password)
+        
         if stored_password != password and stored_password != input_hashed:
             st.error("❌ پاسورڈ غلط ہے۔")
             return False
         
-        # 3. سیشن اسٹیٹ سیٹ کریں
         st.session_state.logged_in = True
         st.session_state.username = username
         st.session_state.user_type = "admin" if username == "admin" else "teacher"
-        
         st.success(f"✅ لاگ ان کامیاب! آپ {st.session_state.user_type} ہیں۔")
         return True
         
     except Exception as e:
         st.error(f"❌ Supabase استفسار میں خرابی: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc())
         return False
+
+# سیشن اسٹیٹ کی ابتدائی حالت
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+if "user_type" not in st.session_state:
+    st.session_state.user_type = ""   # <-- یہ ضروری ہے تاکہ AttributeError نہ آئے
+
+# اگر لاگ ان نہیں ہے تو لاگ ان فارم دکھائیں
+if not st.session_state.logged_in:
+    st.markdown("<div class='main-header'><h1>🕌 جامعہ ملیہ اسلامیہ فیصل آباد</h1><p>اسمارٹ تعلیمی و انتظامی پورٹل</p></div>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,1.5,1])
+    with col2:
+        with st.container():
+            st.markdown("<div class='report-card'><h3>🔐 لاگ ان</h3>", unsafe_allow_html=True)
+            u = st.text_input("صارف نام")
+            p = st.text_input("پاسورڈ", type="password")
+            if st.button("داخل ہوں"):
+                if verify_login(u, p):
+                    st.rerun()
+                else:
+                    st.error("لاگ ان ناکام۔ براہ کرم دوبارہ کوشش کریں۔")
+            st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()   # <-- یہ یقینی بناتا ہے کہ نیچے کا کوڈ لاگ ان کے بغیر نہ چلے
+
+# اگر لاگ ان کامیاب ہے تو باقی ایپ چلائیں
+st.sidebar.success(f"👤 خوش آمدید، {st.session_state.username} ({st.session_state.user_type})")
 # ==================== مینو ====================
 if st.session_state.user_type == "admin":
     menu = ["📊 ایڈمن ڈیش بورڈ", "📊 یومیہ تعلیمی رپورٹ", "🎓 امتحانی نظام", "📜 ماہانہ رزلٹ کارڈ",
