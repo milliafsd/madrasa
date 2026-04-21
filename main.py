@@ -745,7 +745,7 @@ elif selected == "⚙️ بیک اپ & سیٹنگز" and st.session_state.user_t
         if res.data: st.dataframe(pd.DataFrame(res.data))
 
 # ==================== استاد سیکشنز ====================
-# 9.1 روزانہ سبق اندراج (حفظ، قاعدہ، درس نظامی، عصری)
+# 9.1 روزانہ سبق اندراج
 if selected == "📝 روزانہ سبق اندراج" and st.session_state.user_type == "teacher":
     st.header("📝 روزانہ سبق اندراج")
     entry_date = st.date_input("تاریخ (جس دن کا اندراج کرنا ہے)", date.today())
