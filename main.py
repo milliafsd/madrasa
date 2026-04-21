@@ -131,34 +131,39 @@ st.markdown("""
 # ==================== لاگ ان ====================
 def verify_login(username, password):
     try:
-        # 1. پہلے چیک کریں کہ کیا ٹیبل میں ایسا یوزر موجود ہے (پاسورڈ دیکھے بغیر)
-        res = supabase.table("teachers").select("name, password", count="exact").eq("name", username).execute()
-        
+        # 1. یوزر کو ڈھونڈیں
+        res = supabase.table("teachers").select("*").eq("name", username).execute()
         if not res.data:
-            st.error(f"❌ صارف '{username}' Supabase میں موجود نہیں ہے۔")
-            return None
-            
-        stored_password = res.data[0].get('password', '')
-        st.info(f"🔍 Supabase میں محفوظ ہیش: {stored_password[:20]}...")
+            st.error(f"❌ صارف '{username}' Supabase میں موجود نہیں۔")
+            return False  # <-- تبدیلی: اب False واپس کریں
         
-        # 2. ان پٹ پاسورڈ کی ہیش بنائیں اور دکھائیں
-        hashed_input = hash_password(password)
-        st.info(f"🔍 ان پٹ پاسورڈ کی ہیش: {hashed_input[:20]}...")
+        user_record = res.data[0]
+        stored_password = user_record.get('password', '')
         
-        # 3. دونوں کا موازنہ کریں
-        if stored_password == password or stored_password == hashed_input:
-            st.success("✅ پاسورڈ درست ہے!")
-            return res.data[0]
-        else:
+        # 2. پاسورڈ چیک کریں
+        input_hashed = hash_password(password)
+        if stored_password != password and stored_password != input_hashed:
             st.error("❌ پاسورڈ غلط ہے۔")
-            return None
-            
+            return False
+        
+        # 3. سیشن اسٹیٹ سیٹ کریں
+        st.session_state.logged_in = True
+        st.session_state.username = username
+        st.session_state.user_type = "admin" if username == "admin" else "teacher"
+        
+        st.success(f"✅ لاگ ان کامیاب! آپ {st.session_state.user_type} ہیں۔")
+        return True
+        if st.button("داخل ہوں"):
+        if verify_login(u, p):  # <-- اب True/False واپس آتا ہے
+        st.rerun()          # <-- صرف اس صورت میں ری رن کریں جب کامیاب ہو
+    else:
+        st.error("لاگ ان ناکام۔ براہ کرم دوبارہ کوشش کریں۔")
     except Exception as e:
         st.error(f"❌ Supabase استفسار میں خرابی: {str(e)}")
         import traceback
         st.code(traceback.format_exc())
-        return None
-
+        return False
+        
 # ==================== مینو ====================
 if st.session_state.user_type == "admin":
     menu = ["📊 ایڈمن ڈیش بورڈ", "📊 یومیہ تعلیمی رپورٹ", "🎓 امتحانی نظام", "📜 ماہانہ رزلٹ کارڈ",
