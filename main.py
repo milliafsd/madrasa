@@ -190,10 +190,15 @@ import hashlib
 # ==================== لاگ ان سسٹم ====================
 def verify_login(username, password):
     try:
-        # Supabase سے یوزر حاصل کریں
-        res = supabase.table("teachers").select("*").eq("name", username).execute()
-        if not res.data:
-            return False
+        res = supabase.table("teachers").select("*").eq("name", username).eq("password", password).execute()
+        if res.data:
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.session_state.user_type = "admin" if username == "admin" else "teacher"
+            return True
+        return False
+    except:
+        return False
         
         stored_password = res.data[0].get('password', '')
         input_hashed = hash_password(password)
