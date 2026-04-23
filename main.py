@@ -2200,9 +2200,9 @@ for row in rows:
 batch_insert("staff_monitoring", sm_records)
 
 # ==================== Migration Section ====================
-     elif selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "admin":
-        st.header("🔄 SQLite سے Supabase ڈیٹا منتقلی")
-        st.warning("⚠️ یہ Supabase کا موجودہ ڈیٹا مٹا کر نئے سے بھر دے گا!")
+elif selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "admin":
+    st.header("🔄 SQLite سے Supabase ڈیٹا منتقلی")
+    st.warning("⚠️ یہ Supabase کا موجودہ ڈیٹا مٹا کر نئے سے بھر دے گا!")
 
     db_file = st.file_uploader("پرانی .db فائل اپ لوڈ کریں", type=["db"])
 
