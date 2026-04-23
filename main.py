@@ -1902,7 +1902,14 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 log_lines.append(f"✅ students: {len(sqlite_to_sb)}/{total_s}")
                 progress.progress(22)
-
+                for idx, (sqlite_id, row) in enumerate(sqlite_students.items()):
+          try:
+                res = supabase.table("students").insert({...}).execute()
+                new_id = res.data[0]["id"]
+               sqlite_to_sb[sqlite_id] = new_id
+               except Exception as e:
+               # error چھپائیں نہیں — دکھائیں
+               log_lines.append(f"❌ طالب علم {row.get('name')} fail: {e}\n")
                         # ── 3. HIFZ RECORDS ──
                 status.info("حفظ ریکارڈ... (665 ریکارڈ، تھوڑا وقت لگے گا)")
                 rows = mig_c.execute("SELECT * FROM hifz_records").fetchall()
