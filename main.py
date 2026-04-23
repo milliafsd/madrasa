@@ -1819,18 +1819,20 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
             except Exception as e:
                 st.error(f"❌ فائل نہیں کھلی: {e}")
                 st.stop()
-
+           
             def safe(val):
-    if val is None: return None
-    if isinstance(val, str) and val.strip() == '': return None
-    # تاریخ DD-MM-YYYY کو YYYY-MM-DD میں بدلیں
-    if isinstance(val, str) and len(val) == 10 and val[2] == '-' and val[5] == '-':
-        try:
-            parts = val.split('-')
-            return f"{parts[2]}-{parts[1]}-{parts[0]}"
-        except:
-            pass
-    return val
+                if val is None:
+                    return None
+                if isinstance(val, str) and val.strip() == '':
+                    return None
+                # تاریخ DD-MM-YYYY کو YYYY-MM-DD میں بدلیں
+                if isinstance(val, str) and len(val) == 10 and val[2] == '-' and val[5] == '-':
+                    try:
+                        parts = val.split('-')
+                        return f"{parts[2]}-{parts[1]}-{parts[0]}"
+                    except:
+                        pass
+                return val
 
             def do_insert(table, records):
                 if not records:
