@@ -1870,47 +1870,47 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                 log_lines.append(do_insert("teachers", recs))
                 progress.progress(10)
 
-                # ── 2. STUDENTS ──
-                status.info("طلباء...")
-                try: supabase.table("students").delete().neq("id", 0).execute()
-                except: pass
-                rows = mig_c.execute("SELECT * FROM students").fetchall()
-                sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
-                recs = []
-                for row in sqlite_students.values():
-                    recs.append({
-                        "name": safe(row.get("name")),
-                        "father_name": safe(row.get("father_name")),
-                        "mother_name": safe(row.get("mother_name")),
-                        "dob": safe(row.get("dob")),
-                        "admission_date": safe(row.get("admission_date")),
-                        "exit_date": safe(row.get("exit_date")),
-                        "exit_reason": safe(row.get("exit_reason")),
-                        "id_card": safe(row.get("id_card")),
-                        "phone": safe(row.get("phone")),
-                        "address": safe(row.get("address")),
-                        "teacher_name": safe(row.get("teacher_name")),
-                        "dept": safe(row.get("dept")),
-                        "class": safe(row.get("class")),
-                        "section": safe(row.get("section")),
-                        "roll_no": safe(row.get("roll_no")),
-                    })
-                log_lines.append(do_insert("students", recs))
-                progress.progress(22)
+# ── 2. STUDENTS (ایک ایک کر کے - ID محفوظ رکھیں) ──
+status.info("طلباء...")
+try: supabase.table("students").delete().neq("id", 0).execute()
+except: pass
 
-                # SQLite ID → Supabase ID
-                status.info("IDs نقشہ...")
-                sb_res = supabase.table("students").select("id, name, father_name").execute()
-                name_to_sbid = {f"{s['name']}|{s['father_name']}": s["id"] for s in sb_res.data}
-                sqlite_to_sb = {}
-                for sid, stud in sqlite_students.items():
-                    key = f"{stud['name']}|{stud['father_name']}"
-                    if key in name_to_sbid:
-                        sqlite_to_sb[sid] = name_to_sbid[key]
-                log_lines.append(f"✅ ID نقشہ: {len(sqlite_to_sb)}/{len(sqlite_students)}\n")
-                progress.progress(30)
+rows = mig_c.execute("SELECT * FROM students").fetchall()
+sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
+sqlite_to_sb = {}  # SQLite ID → Supabase ID
 
-                # ── 3. HIFZ RECORDS ──
+total_s = len(sqlite_students)
+for idx, (sqlite_id, row) in enumerate(sqlite_students.items()):
+    try:
+        res = supabase.table("students").insert({
+            "name": safe(row.get("name")),
+            "father_name": safe(row.get("father_name")),
+            "mother_name": safe(row.get("mother_name")),
+            "dob": safe(row.get("dob")),
+            "admission_date": safe(row.get("admission_date")),
+            "exit_date": safe(row.get("exit_date")),
+            "exit_reason": safe(row.get("exit_reason")),
+            "id_card": safe(row.get("id_card")),
+            "phone": safe(row.get("phone")),
+            "address": safe(row.get("address")),
+            "teacher_name": safe(row.get("teacher_name")),
+            "dept": safe(row.get("dept")),
+            "class": safe(row.get("class")),
+            "section": safe(row.get("section")),
+            "roll_no": safe(row.get("roll_no")),
+        }).execute()
+        # فوری Supabase ID محفوظ کریں
+        new_id = res.data[0]["id"]
+        sqlite_to_sb[sqlite_id] = new_id
+        status.info(f"طلباء: {idx+1}/{total_s}")
+    except Exception as e:
+        log_lines.append(f"⚠️ طالب علم skip {sqlite_id}: {e}\n")
+
+log_lines.append(f"✅ students: {len(sqlite_to_sb)}/{total_s}\n")
+progress.progress(22)
+# ID نقشہ بن گیا - نیچے والی sb_res والی lines ہٹا دیں
+
+                        # ── 3. HIFZ RECORDS ──
                 status.info("حفظ ریکارڈ... (665 ریکارڈ، تھوڑا وقت لگے گا)")
                 try: supabase.table("hifz_records").delete().neq("id", 0).execute()
                 except: pass
