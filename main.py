@@ -996,7 +996,7 @@ elif selected == "👥 یوزر مینجمنٹ" and st.session_state.user_type =
                     section = st.text_input("سیکشن")
                     try:
                         tres = supabase.table("teachers").select("name").neq("name", "admin").execute()
-                        teachers_list = [r["name"] for r in tres.data]
+                      678  teachers_list = [r["name"] for r in tres.data]
                     except:
                         teachers_list = []
                     teacher = st.selectbox("استاد*", teachers_list) if teachers_list else st.text_input("استاد کا نام*")
@@ -1850,8 +1850,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
             try:
                 # ── 1. TEACHERS ──
                 status.info("اساتذہ...")
-                try: supabase.table("teachers").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM teachers").fetchall()
                 recs = []
                 for row in rows:
@@ -1872,11 +1870,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 # ========== 2. STUDENTS (ID محفوظ رکھیں) ==========
                 status.info("طلباء...")
-                try:
-                    supabase.table("students").delete().neq("id", 0).execute()
-                except:
-                    pass
-
                 rows = mig_c.execute("SELECT * FROM students").fetchall()
                 sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
                 sqlite_to_sb = {}  # SQLite ID → Supabase ID
@@ -1912,8 +1905,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                         # ── 3. HIFZ RECORDS ──
                 status.info("حفظ ریکارڈ... (665 ریکارڈ، تھوڑا وقت لگے گا)")
-                try: supabase.table("hifz_records").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM hifz_records").fetchall()
                 recs = []
                 for row in rows:
@@ -1943,8 +1934,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 # ── 4. QAIDA RECORDS ──
                 status.info("قاعدہ ریکارڈ...")
-                try: supabase.table("qaida_records").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM qaida_records").fetchall()
                 recs = []
                 for row in rows:
@@ -1967,8 +1956,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 # ── 5. TIMETABLE ──
                 status.info("ٹائم ٹیبل...")
-                try: supabase.table("timetable").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM timetable").fetchall()
                 recs = [{"t_name": safe(dict(r).get("t_name")), "day": safe(dict(r).get("day")),
                          "period": safe(dict(r).get("period")), "book": safe(dict(r).get("book")),
@@ -1978,8 +1965,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 # ── 6. EXAMS ──
                 status.info("امتحانات...")
-                try: supabase.table("exams").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM exams").fetchall()
                 recs = []
                 for row in rows:
@@ -2011,8 +1996,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 # ── 7. PASSED PARAS ──
                 status.info("پاس شدہ پارے...")
-                try: supabase.table("passed_paras").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM passed_paras").fetchall()
                 recs = []
                 for row in rows:
@@ -2033,8 +2016,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 # ── 8. T_ATTENDANCE ──
                 status.info("اساتذہ حاضری...")
-                try: supabase.table("t_attendance").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM t_attendance").fetchall()
                 recs = [{"t_name": safe(dict(r).get("t_name")), "a_date": safe(dict(r).get("a_date")),
                          "arrival": safe(dict(r).get("arrival")), "departure": safe(dict(r).get("departure"))}
@@ -2044,8 +2025,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 # ── 9. LEAVE REQUESTS ──
                 status.info("رخصت درخواستیں...")
-                try: supabase.table("leave_requests").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM leave_requests").fetchall()
                 recs = []
                 for row in rows:
@@ -2066,8 +2045,6 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 # ── 10. STAFF MONITORING ──
                 status.info("عملہ نگرانی...")
-                try: supabase.table("staff_monitoring").delete().neq("id", 0).execute()
-                except: pass
                 rows = mig_c.execute("SELECT * FROM staff_monitoring").fetchall()
                 recs = []
                 for row in rows:
