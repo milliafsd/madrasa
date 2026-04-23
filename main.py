@@ -1870,34 +1870,34 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                 log_lines.append(do_insert("teachers", recs))
                 progress.progress(10)
 
-            # ── 2. STUDENTS (ایک ایک کر کے - ID محفوظ رکھیں) ──
-            status.info("طلباء...")
-    try: supabase.table("students").delete().neq("id", 0).execute()
-            except: pass
+ # ── 2. STUDENTS (ایک ایک کر کے - ID محفوظ رکھیں) ──
+                    status.info("طلباء...")
+        try: supabase.table("students").delete().neq("id", 0).execute()
+                    except: pass
 
-            rows = mig_c.execute("SELECT * FROM students").fetchall()
-            sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
-            sqlite_to_sb = {}  # SQLite ID → Supabase ID
+                    rows = mig_c.execute("SELECT * FROM students").fetchall()
+                    sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
+                    sqlite_to_sb = {}  # SQLite ID → Supabase ID
 
-            total_s = len(sqlite_students)
-            for idx, (sqlite_id, row) in enumerate(sqlite_students.items()):
-    try:
-        res = supabase.table("students").insert({
-            "name": safe(row.get("name")),
-            "father_name": safe(row.get("father_name")),
-            "mother_name": safe(row.get("mother_name")),
-            "dob": safe(row.get("dob")),
-            "admission_date": safe(row.get("admission_date")),
-            "exit_date": safe(row.get("exit_date")),
-            "exit_reason": safe(row.get("exit_reason")),
-            "id_card": safe(row.get("id_card")),
-            "phone": safe(row.get("phone")),
-            "address": safe(row.get("address")),
-            "teacher_name": safe(row.get("teacher_name")),
-            "dept": safe(row.get("dept")),
-            "class": safe(row.get("class")),
-            "section": safe(row.get("section")),
-            "roll_no": safe(row.get("roll_no")),
+                    total_s = len(sqlite_students)
+                    for idx, (sqlite_id, row) in enumerate(sqlite_students.items()):
+            try:
+                res = supabase.table("students").insert({
+                     "name": safe(row.get("name")),
+                    "father_name": safe(row.get("father_name")),
+                    "mother_name": safe(row.get("mother_name")),
+                    "dob": safe(row.get("dob")),
+                    "admission_date": safe(row.get("admission_date")),
+                    "exit_date": safe(row.get("exit_date")),
+                    "exit_reason": safe(row.get("exit_reason")),
+                    "id_card": safe(row.get("id_card")),
+                    "phone": safe(row.get("phone")),
+                    "address": safe(row.get("address")),
+                    "teacher_name": safe(row.get("teacher_name")),
+                    "dept": safe(row.get("dept")),
+                    "class": safe(row.get("class")),
+                    "section": safe(row.get("section")),
+                    "roll_no": safe(row.get("roll_no")),
         }).execute()
         # فوری Supabase ID محفوظ کریں
         new_id = res.data[0]["id"]
