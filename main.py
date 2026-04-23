@@ -1789,7 +1789,6 @@ elif selected == "📚 میرا ٹائم ٹیبل" and st.session_state.user_typ
                 st.components.v1.html(f"<script>var w=window.open();w.document.write(`{html_timetable}`);w.print();</script>", height=0)
     except Exception as e:
         st.error(f"خرابی: {e}")
-
 # ==================== Migration Section ====================
 if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "admin":
     st.header("🔄 SQLite سے Supabase ڈیٹا منتقلی")
@@ -1804,6 +1803,7 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
         if confirm and st.button("🚀 منتقلی شروع کریں"):
             import sqlite3
             import os
+            import hashlib
 
             # فائل /tmp میں محفوظ کریں
             tmp_path = "/tmp/migration_db.db"
@@ -1819,7 +1819,7 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
             except Exception as e:
                 st.error(f"❌ فائل نہیں کھلی: {e}")
                 st.stop()
-           
+
             def safe(val):
                 if val is None:
                     return None
@@ -1876,70 +1876,72 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                     })
                 log_lines.append(do_insert("teachers", recs))
                 progress.progress(10)
-# ========== 2. STUDENTS (ID محفوظ رکھیں) ==========
-status.info("طلباء...")
-rows = mig_c.execute("SELECT * FROM students").fetchall()
-sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
-sqlite_to_sb = {}  # SQLite ID → Supabase ID
 
-total_s = len(sqlite_students)
-for idx, (sqlite_id, row) in enumerate(sqlite_students.items()):
-    try:
-        res = supabase.table("students").insert({
-            "name": safe(row.get("name")),
-            "father_name": safe(row.get("father_name")),
-            "mother_name": safe(row.get("mother_name")),
-            "dob": safe(row.get("dob")),
-            "admission_date": safe(row.get("admission_date")),
-            "exit_date": safe(row.get("exit_date")),
-            "exit_reason": safe(row.get("exit_reason")),
-            "id_card": safe(row.get("id_card")),
-            "phone": safe(row.get("phone")),
-            "address": safe(row.get("address")),
-            "teacher_name": safe(row.get("teacher_name")),
-            "dept": safe(row.get("dept")),
-            "class": safe(row.get("class")),
-            "section": safe(row.get("section")),
-            "roll_no": safe(row.get("roll_no")),
-        }).execute()
-        new_id = res.data[0]["id"]
-        sqlite_to_sb[sqlite_id] = new_id
-        status.info(f"طلباء: {idx+1}/{total_s}")
-    except Exception as e:
-        log_lines.append(f"⚠️ طالب علم skip {sqlite_id}: {e}")
+                # ========== 2. STUDENTS (ID محفوظ رکھیں) ==========
+                status.info("طلباء...")
+                rows = mig_c.execute("SELECT * FROM students").fetchall()
+                sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
+                sqlite_to_sb = {}  # SQLite ID → Supabase ID
 
-log_lines.append(f"✅ students: {len(sqlite_to_sb)}/{total_s}")
-progress.progress(22)
+                total_s = len(sqlite_students)
+                for idx, (sqlite_id, row) in enumerate(sqlite_students.items()):
+                    try:
+                        res = supabase.table("students").insert({
+                            "name": safe(row.get("name")),
+                            "father_name": safe(row.get("father_name")),
+                            "mother_name": safe(row.get("mother_name")),
+                            "dob": safe(row.get("dob")),
+                            "admission_date": safe(row.get("admission_date")),
+                            "exit_date": safe(row.get("exit_date")),
+                            "exit_reason": safe(row.get("exit_reason")),
+                            "id_card": safe(row.get("id_card")),
+                            "phone": safe(row.get("phone")),
+                            "address": safe(row.get("address")),
+                            "teacher_name": safe(row.get("teacher_name")),
+                            "dept": safe(row.get("dept")),
+                            "class": safe(row.get("class")),
+                            "section": safe(row.get("section")),
+                            "roll_no": safe(row.get("roll_no")),
+                        }).execute()
+                        new_id = res.data[0]["id"]
+                        sqlite_to_sb[sqlite_id] = new_id
+                        status.info(f"طلباء: {idx+1}/{total_s}")
+                    except Exception as e:
+                        log_lines.append(f"⚠️ طالب علم skip {sqlite_id}: {e}")
 
-# ── 3. HIFZ RECORDS ──
-status.info("حفظ ریکارڈ... (665 ریکارڈ، تھوڑا وقت لگے گا)")
-rows = mig_c.execute("SELECT * FROM hifz_records").fetchall()
-recs = []
-for row in rows:
-    row = dict(row)
-    sb_sid = sqlite_to_sb.get(row.get("student_id"))
-    if not sb_sid:
-        continue
-    recs.append({
-        "r_date": safe(row.get("r_date")),
-        "student_id": sb_sid,
-        "t_name": safe(row.get("t_name")),
-        "surah": safe(row.get("surah")),
-        "a_from": safe(row.get("a_from")),
-        "a_to": safe(row.get("a_to")),
-        "sq_p": safe(row.get("sq_p")),
-        "sq_a": int(row.get("sq_a") or 0),
-        "sq_m": int(row.get("sq_m") or 0),
-        "m_p": safe(row.get("m_p")),
-        "m_a": int(row.get("m_a") or 0),
-        "m_m": int(row.get("m_m") or 0),
-        "attendance": safe(row.get("attendance")),
-        "principal_note": safe(row.get("principal_note")),
-        "lines": int(row.get("lines") or 0),
-        "cleanliness": safe(row.get("cleanliness")),
-    })
-log_lines.append(do_insert("hifz_records", recs))
-progress.progress(55)
+                log_lines.append(f"✅ students: {len(sqlite_to_sb)}/{total_s}")
+                progress.progress(22)
+
+                # ── 3. HIFZ RECORDS ──
+                status.info("حفظ ریکارڈ... (665 ریکارڈ، تھوڑا وقت لگے گا)")
+                rows = mig_c.execute("SELECT * FROM hifz_records").fetchall()
+                recs = []
+                for row in rows:
+                    row = dict(row)
+                    sb_sid = sqlite_to_sb.get(row.get("student_id"))
+                    if not sb_sid:
+                        continue
+                    recs.append({
+                        "r_date": safe(row.get("r_date")),
+                        "student_id": sb_sid,
+                        "t_name": safe(row.get("t_name")),
+                        "surah": safe(row.get("surah")),
+                        "a_from": safe(row.get("a_from")),
+                        "a_to": safe(row.get("a_to")),
+                        "sq_p": safe(row.get("sq_p")),
+                        "sq_a": int(row.get("sq_a") or 0),
+                        "sq_m": int(row.get("sq_m") or 0),
+                        "m_p": safe(row.get("m_p")),
+                        "m_a": int(row.get("m_a") or 0),
+                        "m_m": int(row.get("m_m") or 0),
+                        "attendance": safe(row.get("attendance")),
+                        "principal_note": safe(row.get("principal_note")),
+                        "lines": int(row.get("lines") or 0),
+                        "cleanliness": safe(row.get("cleanliness")),
+                    })
+                log_lines.append(do_insert("hifz_records", recs))
+                progress.progress(55)
+
                 # ── 4. QAIDA RECORDS ──
                 status.info("قاعدہ ریکارڈ...")
                 rows = mig_c.execute("SELECT * FROM qaida_records").fetchall()
@@ -1947,7 +1949,8 @@ progress.progress(55)
                 for row in rows:
                     row = dict(row)
                     sb_sid = sqlite_to_sb.get(row.get("student_id"))
-                    if not sb_sid: continue
+                    if not sb_sid:
+                        continue
                     recs.append({
                         "r_date": safe(row.get("r_date")),
                         "student_id": sb_sid,
@@ -1965,9 +1968,16 @@ progress.progress(55)
                 # ── 5. TIMETABLE ──
                 status.info("ٹائم ٹیبل...")
                 rows = mig_c.execute("SELECT * FROM timetable").fetchall()
-                recs = [{"t_name": safe(dict(r).get("t_name")), "day": safe(dict(r).get("day")),
-                         "period": safe(dict(r).get("period")), "book": safe(dict(r).get("book")),
-                         "room": safe(dict(r).get("room"))} for r in rows]
+                recs = [
+                    {
+                        "t_name": safe(dict(r).get("t_name")),
+                        "day": safe(dict(r).get("day")),
+                        "period": safe(dict(r).get("period")),
+                        "book": safe(dict(r).get("book")),
+                        "room": safe(dict(r).get("room"))
+                    }
+                    for r in rows
+                ]
                 log_lines.append(do_insert("timetable", recs))
                 progress.progress(78)
 
@@ -1978,7 +1988,8 @@ progress.progress(55)
                 for row in rows:
                     row = dict(row)
                     sb_sid = sqlite_to_sb.get(row.get("student_id"))
-                    if not sb_sid: continue
+                    if not sb_sid:
+                        continue
                     recs.append({
                         "student_id": sb_sid,
                         "dept": safe(row.get("dept")),
@@ -2009,7 +2020,8 @@ progress.progress(55)
                 for row in rows:
                     row = dict(row)
                     sb_sid = sqlite_to_sb.get(row.get("student_id"))
-                    if not sb_sid: continue
+                    if not sb_sid:
+                        continue
                     recs.append({
                         "student_id": sb_sid,
                         "para_no": row.get("para_no"),
@@ -2025,9 +2037,15 @@ progress.progress(55)
                 # ── 8. T_ATTENDANCE ──
                 status.info("اساتذہ حاضری...")
                 rows = mig_c.execute("SELECT * FROM t_attendance").fetchall()
-                recs = [{"t_name": safe(dict(r).get("t_name")), "a_date": safe(dict(r).get("a_date")),
-                         "arrival": safe(dict(r).get("arrival")), "departure": safe(dict(r).get("departure"))}
-                        for r in rows]
+                recs = [
+                    {
+                        "t_name": safe(dict(r).get("t_name")),
+                        "a_date": safe(dict(r).get("a_date")),
+                        "arrival": safe(dict(r).get("arrival")),
+                        "departure": safe(dict(r).get("departure"))
+                    }
+                    for r in rows
+                ]
                 log_lines.append(do_insert("t_attendance", recs))
                 progress.progress(93)
 
@@ -2071,8 +2089,10 @@ progress.progress(55)
                 progress.progress(100)
 
                 mig_conn.close()
-                try: os.remove(tmp_path)
-                except: pass
+                try:
+                    os.remove(tmp_path)
+                except:
+                    pass
 
                 status.success("✅ منتقلی مکمل!")
                 st.text_area("نتیجہ:", "".join(log_lines), height=300)
@@ -2084,7 +2104,8 @@ progress.progress(55)
                 try:
                     mig_conn.close()
                     os.remove(tmp_path)
-                except: pass
+                except:
+                    pass
 # ==================== 10. لاگ آؤٹ ====================
 st.sidebar.divider()
 if st.sidebar.button("🚪 لاگ آؤٹ"):
