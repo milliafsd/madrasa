@@ -2199,20 +2199,316 @@ for row in rows:
     })
 batch_insert("staff_monitoring", sm_records)
 
-conn.close()
+# ==================== Migration Section ====================
+elif selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "admin":
+    st.header("🔄 SQLite سے Supabase ڈیٹا منتقلی")
+    st.warning("⚠️ یہ Supabase کا موجودہ ڈیٹا مٹا کر نئے سے بھر دے گا!")
 
-print("\n" + "="*50)
-print("✅ منتقلی مکمل!")
-print("="*50)
-print("\nاب Supabase میں چیک کریں:")
-tables = ["teachers","students","hifz_records","qaida_records","t_attendance",
-          "leave_requests","exams","passed_paras","timetable","staff_monitoring"]
-for t in tables:
-    try:
-        res = supabase.table(t).select("id", count="exact").execute()
-        print(f"  {t}: {res.count} ریکارڈ")
-    except Exception as e:
-        print(f"  {t}: چیک نہیں ہو سکا - {e}")
+    db_file = st.file_uploader("پرانی .db فائل اپ لوڈ کریں", type=["db"])
+
+    if db_file:
+        st.info(f"فائل: {db_file.name} ({db_file.size // 1024} KB)")
+        confirm = st.checkbox("میں سمجھتا ہوں کہ موجودہ Supabase ڈیٹا ختم ہو جائے گا")
+
+        if confirm and st.button("🚀 منتقلی شروع کریں"):
+            import sqlite3
+            import os
+
+            # فائل /tmp میں محفوظ کریں
+            tmp_path = "/tmp/migration_db.db"
+            with open(tmp_path, "wb") as f:
+                f.write(db_file.getvalue())
+
+            # SQLite کنکشن
+            try:
+                mig_conn = sqlite3.connect(tmp_path)
+                mig_conn.row_factory = sqlite3.Row
+                mig_c = mig_conn.cursor()
+                st.success("✅ فائل کھل گئی")
+            except Exception as e:
+                st.error(f"❌ فائل نہیں کھلی: {e}")
+                st.stop()
+
+            def safe(val):
+                if val is None: return None
+                if isinstance(val, str) and val.strip() == '': return None
+                return val
+
+            def do_insert(table, records):
+                if not records:
+                    return f"⚠️ {table}: کوئی ریکارڈ نہیں\n"
+                success = 0
+                for i in range(0, len(records), 50):
+                    batch = records[i:i+50]
+                    try:
+                        supabase.table(table).insert(batch).execute()
+                        success += len(batch)
+                    except Exception as e:
+                        for rec in batch:
+                            try:
+                                supabase.table(table).insert(rec).execute()
+                                success += 1
+                            except:
+                                pass
+                return f"✅ {table}: {success}/{len(records)}\n"
+
+            progress = st.progress(0)
+            status = st.empty()
+            log_lines = []
+
+            try:
+                # ── 1. TEACHERS ──
+                status.info("اساتذہ...")
+                try: supabase.table("teachers").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM teachers").fetchall()
+                recs = []
+                for row in rows:
+                    row = dict(row)
+                    pwd = str(row.get("password") or "jamia123")
+                    hashed = hashlib.sha256(pwd.encode()).hexdigest() if len(pwd) != 64 else pwd
+                    recs.append({
+                        "name": safe(row.get("name")),
+                        "password": hashed,
+                        "dept": safe(row.get("dept")),
+                        "phone": safe(row.get("phone")),
+                        "address": safe(row.get("address")),
+                        "id_card": safe(row.get("id_card")),
+                        "joining_date": safe(row.get("joining_date")),
+                    })
+                log_lines.append(do_insert("teachers", recs))
+                progress.progress(10)
+
+                # ── 2. STUDENTS ──
+                status.info("طلباء...")
+                try: supabase.table("students").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM students").fetchall()
+                sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
+                recs = []
+                for row in sqlite_students.values():
+                    recs.append({
+                        "name": safe(row.get("name")),
+                        "father_name": safe(row.get("father_name")),
+                        "mother_name": safe(row.get("mother_name")),
+                        "dob": safe(row.get("dob")),
+                        "admission_date": safe(row.get("admission_date")),
+                        "exit_date": safe(row.get("exit_date")),
+                        "exit_reason": safe(row.get("exit_reason")),
+                        "id_card": safe(row.get("id_card")),
+                        "phone": safe(row.get("phone")),
+                        "address": safe(row.get("address")),
+                        "teacher_name": safe(row.get("teacher_name")),
+                        "dept": safe(row.get("dept")),
+                        "class": safe(row.get("class")),
+                        "section": safe(row.get("section")),
+                        "roll_no": safe(row.get("roll_no")),
+                    })
+                log_lines.append(do_insert("students", recs))
+                progress.progress(22)
+
+                # SQLite ID → Supabase ID
+                status.info("IDs نقشہ...")
+                sb_res = supabase.table("students").select("id, name, father_name").execute()
+                name_to_sbid = {f"{s['name']}|{s['father_name']}": s["id"] for s in sb_res.data}
+                sqlite_to_sb = {}
+                for sid, stud in sqlite_students.items():
+                    key = f"{stud['name']}|{stud['father_name']}"
+                    if key in name_to_sbid:
+                        sqlite_to_sb[sid] = name_to_sbid[key]
+                log_lines.append(f"✅ ID نقشہ: {len(sqlite_to_sb)}/{len(sqlite_students)}\n")
+                progress.progress(30)
+
+                # ── 3. HIFZ RECORDS ──
+                status.info("حفظ ریکارڈ... (665 ریکارڈ، تھوڑا وقت لگے گا)")
+                try: supabase.table("hifz_records").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM hifz_records").fetchall()
+                recs = []
+                for row in rows:
+                    row = dict(row)
+                    sb_sid = sqlite_to_sb.get(row.get("student_id"))
+                    if not sb_sid: continue
+                    recs.append({
+                        "r_date": safe(row.get("r_date")),
+                        "student_id": sb_sid,
+                        "t_name": safe(row.get("t_name")),
+                        "surah": safe(row.get("surah")),
+                        "a_from": safe(row.get("a_from")),
+                        "a_to": safe(row.get("a_to")),
+                        "sq_p": safe(row.get("sq_p")),
+                        "sq_a": int(row.get("sq_a") or 0),
+                        "sq_m": int(row.get("sq_m") or 0),
+                        "m_p": safe(row.get("m_p")),
+                        "m_a": int(row.get("m_a") or 0),
+                        "m_m": int(row.get("m_m") or 0),
+                        "attendance": safe(row.get("attendance")),
+                        "principal_note": safe(row.get("principal_note")),
+                        "lines": int(row.get("lines") or 0),
+                        "cleanliness": safe(row.get("cleanliness")),
+                    })
+                log_lines.append(do_insert("hifz_records", recs))
+                progress.progress(55)
+
+                # ── 4. QAIDA RECORDS ──
+                status.info("قاعدہ ریکارڈ...")
+                try: supabase.table("qaida_records").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM qaida_records").fetchall()
+                recs = []
+                for row in rows:
+                    row = dict(row)
+                    sb_sid = sqlite_to_sb.get(row.get("student_id"))
+                    if not sb_sid: continue
+                    recs.append({
+                        "r_date": safe(row.get("r_date")),
+                        "student_id": sb_sid,
+                        "t_name": safe(row.get("t_name")),
+                        "lesson_no": safe(row.get("lesson_no")),
+                        "total_lines": int(row.get("total_lines") or 0),
+                        "details": safe(row.get("details")),
+                        "attendance": safe(row.get("attendance")),
+                        "principal_note": safe(row.get("principal_note")),
+                        "cleanliness": safe(row.get("cleanliness")),
+                    })
+                log_lines.append(do_insert("qaida_records", recs))
+                progress.progress(70)
+
+                # ── 5. TIMETABLE ──
+                status.info("ٹائم ٹیبل...")
+                try: supabase.table("timetable").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM timetable").fetchall()
+                recs = [{"t_name": safe(dict(r).get("t_name")), "day": safe(dict(r).get("day")),
+                         "period": safe(dict(r).get("period")), "book": safe(dict(r).get("book")),
+                         "room": safe(dict(r).get("room"))} for r in rows]
+                log_lines.append(do_insert("timetable", recs))
+                progress.progress(78)
+
+                # ── 6. EXAMS ──
+                status.info("امتحانات...")
+                try: supabase.table("exams").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM exams").fetchall()
+                recs = []
+                for row in rows:
+                    row = dict(row)
+                    sb_sid = sqlite_to_sb.get(row.get("student_id"))
+                    if not sb_sid: continue
+                    recs.append({
+                        "student_id": sb_sid,
+                        "dept": safe(row.get("dept")),
+                        "exam_type": safe(row.get("exam_type")),
+                        "from_para": int(row.get("from_para") or 0),
+                        "to_para": int(row.get("to_para") or 0),
+                        "book_name": safe(row.get("book_name")),
+                        "amount_read": safe(row.get("amount_read")),
+                        "start_date": safe(row.get("start_date")),
+                        "end_date": safe(row.get("end_date")),
+                        "total_days": int(row.get("total_days") or 0),
+                        "q1": int(row.get("q1") or 0),
+                        "q2": int(row.get("q2") or 0),
+                        "q3": int(row.get("q3") or 0),
+                        "q4": int(row.get("q4") or 0),
+                        "q5": int(row.get("q5") or 0),
+                        "total": int(row.get("total") or 0),
+                        "grade": safe(row.get("grade")),
+                        "status": safe(row.get("status")),
+                    })
+                log_lines.append(do_insert("exams", recs))
+                progress.progress(84)
+
+                # ── 7. PASSED PARAS ──
+                status.info("پاس شدہ پارے...")
+                try: supabase.table("passed_paras").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM passed_paras").fetchall()
+                recs = []
+                for row in rows:
+                    row = dict(row)
+                    sb_sid = sqlite_to_sb.get(row.get("student_id"))
+                    if not sb_sid: continue
+                    recs.append({
+                        "student_id": sb_sid,
+                        "para_no": row.get("para_no"),
+                        "book_name": safe(row.get("book_name")),
+                        "passed_date": safe(row.get("passed_date")),
+                        "exam_type": safe(row.get("exam_type")),
+                        "grade": safe(row.get("grade")),
+                        "marks": int(row.get("marks") or 0),
+                    })
+                log_lines.append(do_insert("passed_paras", recs))
+                progress.progress(89)
+
+                # ── 8. T_ATTENDANCE ──
+                status.info("اساتذہ حاضری...")
+                try: supabase.table("t_attendance").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM t_attendance").fetchall()
+                recs = [{"t_name": safe(dict(r).get("t_name")), "a_date": safe(dict(r).get("a_date")),
+                         "arrival": safe(dict(r).get("arrival")), "departure": safe(dict(r).get("departure"))}
+                        for r in rows]
+                log_lines.append(do_insert("t_attendance", recs))
+                progress.progress(93)
+
+                # ── 9. LEAVE REQUESTS ──
+                status.info("رخصت درخواستیں...")
+                try: supabase.table("leave_requests").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM leave_requests").fetchall()
+                recs = []
+                for row in rows:
+                    row = dict(row)
+                    recs.append({
+                        "t_name": safe(row.get("t_name")),
+                        "reason": safe(row.get("reason")),
+                        "start_date": safe(row.get("start_date")),
+                        "back_date": safe(row.get("back_date")),
+                        "status": safe(row.get("status")),
+                        "request_date": safe(row.get("request_date")),
+                        "l_type": safe(row.get("l_type")) or "دیگر",
+                        "days": int(row.get("days") or 1),
+                        "notification_seen": int(row.get("notification_seen") or 0),
+                    })
+                log_lines.append(do_insert("leave_requests", recs))
+                progress.progress(96)
+
+                # ── 10. STAFF MONITORING ──
+                status.info("عملہ نگرانی...")
+                try: supabase.table("staff_monitoring").delete().neq("id", 0).execute()
+                except: pass
+                rows = mig_c.execute("SELECT * FROM staff_monitoring").fetchall()
+                recs = []
+                for row in rows:
+                    row = dict(row)
+                    recs.append({
+                        "staff_name": safe(row.get("staff_name")),
+                        "date": safe(row.get("date")),
+                        "note_type": safe(row.get("note_type")),
+                        "description": safe(row.get("description")),
+                        "action_taken": safe(row.get("action_taken")),
+                        "status": safe(row.get("status")),
+                        "created_by": safe(row.get("created_by")),
+                        "created_at": safe(row.get("created_at")),
+                    })
+                log_lines.append(do_insert("staff_monitoring", recs))
+                progress.progress(100)
+
+                mig_conn.close()
+                try: os.remove(tmp_path)
+                except: pass
+
+                status.success("✅ منتقلی مکمل!")
+                st.text_area("نتیجہ:", "".join(log_lines), height=300)
+
+            except Exception as e:
+                st.error(f"❌ خرابی: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+                try:
+                    mig_conn.close()
+                    os.remove(tmp_path)
+                except: pass
 # ==================== 10. لاگ آؤٹ ====================
 st.sidebar.divider()
 if st.sidebar.button("🚪 لاگ آؤٹ"):
