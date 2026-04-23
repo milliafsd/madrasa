@@ -8,7 +8,7 @@ import hashlib
 import zipfile
 import io
 from supabase import create_client
-Pplkk
+
 # ==================== 1. Supabase سیٹ اپ ====================
 SUPABASE_URL = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
