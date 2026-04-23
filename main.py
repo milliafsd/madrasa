@@ -1815,6 +1815,7 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
         if confirm and st.button("🚀 منتقلی شروع کریں"):
             import sqlite3
             import os
+            import hashlib
 
             # فائل کو /tmp میں عارضی طور پر محفوظ کریں
             tmp_path = "/tmp/migration_db.db"
@@ -1879,6 +1880,13 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                                 failed += 1
                                 # st.warning(f"{table_name}: ریکارڈ داخل نہ ہو سکا - {inner_e}")
 
+                return inserted, failed
+
+            # مائیگریشن کی بنیادی معلومات
+            log_lines = []
+            progress = st.progress(0)
+            status = st.empty()
+
             try:
                 # ── 1. TEACHERS ──
                 status.info("اساتذہ...")
@@ -1897,10 +1905,10 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                         "id_card": safe(row.get("id_card")),
                         "joining_date": safe(row.get("joining_date")),
                     })
-                log_lines.append(do_insert("teachers", recs))
+                log_lines.append(do_insert("teachers", recs, progress, status))
                 progress.progress(10)
 
-                # ========== 2. STUDENTS (ID محفوظ رکھیں) ==========
+                # ── 2. STUDENTS (ID محفوظ رکھیں) ──
                 status.info("طلباء...")
                 rows = mig_c.execute("SELECT * FROM students").fetchall()
                 sqlite_students = {dict(r)["id"]: dict(r) for r in rows}
@@ -1934,22 +1942,16 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
 
                 log_lines.append(f"✅ students: {len(sqlite_to_sb)}/{total_s}")
                 progress.progress(22)
-                for idx, (sqlite_id, row) in enumerate(sqlite_students.items()):
-          try:
-                res = supabase.table("students").insert({...}).execute()
-                new_id = res.data[0]["id"]
-               sqlite_to_sb[sqlite_id] = new_id
-               except Exception as e:
-               # error چھپائیں نہیں — دکھائیں
-               log_lines.append(f"❌ طالب علم {row.get('name')} fail: {e}\n")
-                        # ── 3. HIFZ RECORDS ──
+
+                # ── 3. HIFZ RECORDS ──
                 status.info("حفظ ریکارڈ... (665 ریکارڈ، تھوڑا وقت لگے گا)")
                 rows = mig_c.execute("SELECT * FROM hifz_records").fetchall()
                 recs = []
                 for row in rows:
                     row = dict(row)
                     sb_sid = sqlite_to_sb.get(row.get("student_id"))
-                    if not sb_sid: continue
+                    if not sb_sid:
+                        continue
                     recs.append({
                         "r_date": safe(row.get("r_date")),
                         "student_id": sb_sid,
@@ -1968,7 +1970,7 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                         "lines": int(row.get("lines") or 0),
                         "cleanliness": safe(row.get("cleanliness")),
                     })
-                log_lines.append(do_insert("hifz_records", recs))
+                log_lines.append(do_insert("hifz_records", recs, progress, status))
                 progress.progress(55)
 
                 # ── 4. QAIDA RECORDS ──
@@ -1978,7 +1980,8 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                 for row in rows:
                     row = dict(row)
                     sb_sid = sqlite_to_sb.get(row.get("student_id"))
-                    if not sb_sid: continue
+                    if not sb_sid:
+                        continue
                     recs.append({
                         "r_date": safe(row.get("r_date")),
                         "student_id": sb_sid,
@@ -1990,16 +1993,23 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                         "principal_note": safe(row.get("principal_note")),
                         "cleanliness": safe(row.get("cleanliness")),
                     })
-                log_lines.append(do_insert("qaida_records", recs))
+                log_lines.append(do_insert("qaida_records", recs, progress, status))
                 progress.progress(70)
 
                 # ── 5. TIMETABLE ──
                 status.info("ٹائم ٹیبل...")
                 rows = mig_c.execute("SELECT * FROM timetable").fetchall()
-                recs = [{"t_name": safe(dict(r).get("t_name")), "day": safe(dict(r).get("day")),
-                         "period": safe(dict(r).get("period")), "book": safe(dict(r).get("book")),
-                         "room": safe(dict(r).get("room"))} for r in rows]
-                log_lines.append(do_insert("timetable", recs))
+                recs = [
+                    {
+                        "t_name": safe(dict(r).get("t_name")),
+                        "day": safe(dict(r).get("day")),
+                        "period": safe(dict(r).get("period")),
+                        "book": safe(dict(r).get("book")),
+                        "room": safe(dict(r).get("room"))
+                    }
+                    for r in rows
+                ]
+                log_lines.append(do_insert("timetable", recs, progress, status))
                 progress.progress(78)
 
                 # ── 6. EXAMS ──
@@ -2009,7 +2019,8 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                 for row in rows:
                     row = dict(row)
                     sb_sid = sqlite_to_sb.get(row.get("student_id"))
-                    if not sb_sid: continue
+                    if not sb_sid:
+                        continue
                     recs.append({
                         "student_id": sb_sid,
                         "dept": safe(row.get("dept")),
@@ -2030,7 +2041,7 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                         "grade": safe(row.get("grade")),
                         "status": safe(row.get("status")),
                     })
-                log_lines.append(do_insert("exams", recs))
+                log_lines.append(do_insert("exams", recs, progress, status))
                 progress.progress(84)
 
                 # ── 7. PASSED PARAS ──
@@ -2040,7 +2051,8 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                 for row in rows:
                     row = dict(row)
                     sb_sid = sqlite_to_sb.get(row.get("student_id"))
-                    if not sb_sid: continue
+                    if not sb_sid:
+                        continue
                     recs.append({
                         "student_id": sb_sid,
                         "para_no": row.get("para_no"),
@@ -2050,16 +2062,22 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                         "grade": safe(row.get("grade")),
                         "marks": int(row.get("marks") or 0),
                     })
-                log_lines.append(do_insert("passed_paras", recs))
+                log_lines.append(do_insert("passed_paras", recs, progress, status))
                 progress.progress(89)
 
                 # ── 8. T_ATTENDANCE ──
                 status.info("اساتذہ حاضری...")
                 rows = mig_c.execute("SELECT * FROM t_attendance").fetchall()
-                recs = [{"t_name": safe(dict(r).get("t_name")), "a_date": safe(dict(r).get("a_date")),
-                         "arrival": safe(dict(r).get("arrival")), "departure": safe(dict(r).get("departure"))}
-                        for r in rows]
-                log_lines.append(do_insert("t_attendance", recs))
+                recs = [
+                    {
+                        "t_name": safe(dict(r).get("t_name")),
+                        "a_date": safe(dict(r).get("a_date")),
+                        "arrival": safe(dict(r).get("arrival")),
+                        "departure": safe(dict(r).get("departure"))
+                    }
+                    for r in rows
+                ]
+                log_lines.append(do_insert("t_attendance", recs, progress, status))
                 progress.progress(93)
 
                 # ── 9. LEAVE REQUESTS ──
@@ -2079,7 +2097,7 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                         "days": int(row.get("days") or 1),
                         "notification_seen": int(row.get("notification_seen") or 0),
                     })
-                log_lines.append(do_insert("leave_requests", recs))
+                log_lines.append(do_insert("leave_requests", recs, progress, status))
                 progress.progress(96)
 
                 # ── 10. STAFF MONITORING ──
@@ -2098,15 +2116,17 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                         "created_by": safe(row.get("created_by")),
                         "created_at": safe(row.get("created_at")),
                     })
-                log_lines.append(do_insert("staff_monitoring", recs))
+                log_lines.append(do_insert("staff_monitoring", recs, progress, status))
                 progress.progress(100)
 
                 mig_conn.close()
-                try: os.remove(tmp_path)
-                except: pass
+                try:
+                    os.remove(tmp_path)
+                except:
+                    pass
 
                 status.success("✅ منتقلی مکمل!")
-                st.text_area("نتیجہ:", "".join(log_lines), height=300)
+                st.text_area("نتیجہ:", "\n".join(log_lines), height=300)
 
             except Exception as e:
                 st.error(f"❌ خرابی: {e}")
@@ -2115,7 +2135,8 @@ if selected == "🔄 ڈیٹا منتقلی" and st.session_state.user_type == "a
                 try:
                     mig_conn.close()
                     os.remove(tmp_path)
-                except: pass
+                except:
+                    pass
 # ==================== 10. لاگ آؤٹ ====================
 st.sidebar.divider()
 if st.sidebar.button("🚪 لاگ آؤٹ"):
