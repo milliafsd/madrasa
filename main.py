@@ -996,7 +996,7 @@ elif selected == "👥 یوزر مینجمنٹ" and st.session_state.user_type =
                     section = st.text_input("سیکشن")
                     try:
                         tres = supabase.table("teachers").select("name").neq("name", "admin").execute()
-                      678  teachers_list = [r["name"] for r in tres.data]
+                        teachers_list = [r["name"] for r in tres.data]
                     except:
                         teachers_list = []
                     teacher = st.selectbox("استاد*", teachers_list) if teachers_list else st.text_input("استاد کا نام*")
