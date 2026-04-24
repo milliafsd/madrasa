@@ -8,7 +8,7 @@ import hashlib
 import zipfile
 import io
 from supabase import create_client
-
+import anthropic
 # ==================== 1. Supabase سیٹ اپ ====================
 SUPABASE_URL = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
@@ -34,7 +34,37 @@ def ensure_admin():
         pass
 
 ensure_admin()
+# ==================== AI تجزیہ فنکشن ====================
+def get_ai_analysis(prompt, data_summary):
+    """Claude API سے تجزیہ لیں"""
+    try:
+        client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+        message = client.messages.create(
+            model="claude-opus-4-5",
+            max_tokens=1500,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"""آپ ایک تعلیمی مشیر ہیں۔ جامعہ ملیہ اسلامیہ فیصل آباد کے لیے درج ذیل ڈیٹا کا اردو میں تجزیہ کریں۔
 
+{prompt}
+
+ڈیٹا:
+{data_summary}
+
+براہ کرم:
+1. مجموعی کارکردگی کا جائزہ
+2. کمزور طلباء کی نشاندہی
+3. بہتری کے لیے تجاویز
+4. استاد کے لیے سفارشات
+
+تجزیہ اردو میں، واضح اور مختصر لکھیں۔"""
+                }
+            ]
+        )
+        return message.content[0].text
+    except Exception as e:
+        return f"AI تجزیہ میں خرابی: {str(e)}"
 # ==================== 2. ہیلپر فنکشنز ====================
 def log_audit(user, action, details=""):
     try:
@@ -1298,6 +1328,193 @@ elif selected == "🏆 ماہانہ بہترین طلباء" and st.session_stat
                 st.dataframe(df_all, use_container_width=True)
                 st.download_button("📥 CSV ڈاؤن لوڈ کریں", convert_df_to_csv(df_all), "monthly_best_students.csv")
 
+elif selected == "🤖 AI تجزیہ" and st.session_state.user_type == "admin":
+    st.markdown("<div class='main-header'><h1>🤖 AI ذہین تجزیہ</h1><p>Claude AI سے خودکار تعلیمی رپورٹ</p></div>", unsafe_allow_html=True)
+
+    tab1, tab2, tab3 = st.tabs(["📊 ماہانہ کارکردگی", "🎓 امتحانی نتائج", "📅 روزانہ کلاس"])
+
+    # ── TAB 1: ماہانہ کارکردگی ──
+    with tab1:
+        st.subheader("طالب علم کی ماہانہ کارکردگی کا AI تجزیہ")
+        col1, col2 = st.columns(2)
+        with col1:
+            month_start = st.date_input("مہینہ آغاز", date.today().replace(day=1), key="ai_m_start")
+        with col2:
+            month_end = st.date_input("مہینہ اختتام", date.today(), key="ai_m_end")
+
+        dept_ai = st.selectbox("شعبہ", ["حفظ", "قاعدہ", "درسِ نظامی", "عصری تعلیم"], key="ai_dept")
+
+        try:
+            res = supabase.table("students").select("id,name,father_name,dept,teacher_name").eq("dept", dept_ai).execute()
+            students_ai = res.data
+        except:
+            students_ai = []
+
+        if students_ai and st.button("🤖 AI تجزیہ شروع کریں", key="ai_monthly"):
+            with st.spinner("Claude AI تجزیہ کر رہا ہے..."):
+                summary_lines = []
+                for stud in students_ai[:20]:
+                    sid = stud["id"]
+                    sname = stud["name"]
+                    fname = stud["father_name"]
+                    try:
+                        if dept_ai == "حفظ":
+                            res = supabase.table("hifz_records").select(
+                                "attendance,sq_m,m_m,cleanliness"
+                            ).eq("student_id", sid).gte("r_date", str(month_start)).lte("r_date", str(month_end)).execute()
+                            records = res.data
+                            if records:
+                                total_days = len(records)
+                                present = sum(1 for r in records if r.get("attendance") == "حاضر")
+                                avg_sq_m = sum(r.get("sq_m") or 0 for r in records) / total_days
+                                avg_m_m = sum(r.get("m_m") or 0 for r in records) / total_days
+                                clean_list = [r.get("cleanliness") for r in records if r.get("cleanliness")]
+                                clean_score = sum(cleanliness_to_score(c) for c in clean_list) / len(clean_list) if clean_list else 0
+                                summary_lines.append(
+                                    f"- {sname} ولد {fname}: حاضری {present}/{total_days}, سبقی غلطیاں اوسط {avg_sq_m:.1f}, منزل غلطیاں اوسط {avg_m_m:.1f}, صفائی {clean_score:.1f}/3"
+                                )
+                        elif dept_ai == "قاعدہ":
+                            res = supabase.table("qaida_records").select(
+                                "attendance,cleanliness"
+                            ).eq("student_id", sid).gte("r_date", str(month_start)).lte("r_date", str(month_end)).execute()
+                            records = res.data
+                            if records:
+                                total_days = len(records)
+                                present = sum(1 for r in records if r.get("attendance") == "حاضر")
+                                summary_lines.append(f"- {sname} ولد {fname}: حاضری {present}/{total_days}")
+                    except:
+                        pass
+
+                if summary_lines:
+                    data_summary = "\n".join(summary_lines)
+                    prompt = f"شعبہ {dept_ai} کے طلباء کی {month_start} سے {month_end} تک کارکردگی:"
+                    analysis = get_ai_analysis(prompt, data_summary)
+
+                    st.markdown("### 🤖 AI تجزیہ")
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #f0fff4, #e6ffed); 
+                                border-right: 4px solid #1e5631; 
+                                border-radius: 10px; 
+                                padding: 20px; 
+                                direction: rtl; 
+                                text-align: right;
+                                font-size: 1.1rem;
+                                line-height: 2;">
+                    {analysis.replace(chr(10), '<br>')}
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # PDF/HTML ڈاؤن لوڈ
+                    html_report = f"""<!DOCTYPE html><html dir="rtl">
+                    <head><meta charset="UTF-8"><title>AI تجزیہ رپورٹ</title>
+                    <style>
+                        body{{font-family:'Noto Nastaliq Urdu',Arial,sans-serif;direction:rtl;text-align:right;margin:30px}}
+                        h2{{color:#1e5631;text-align:center}}
+                        .analysis{{background:#f0fff4;border-right:4px solid #1e5631;padding:20px;border-radius:10px;line-height:2}}
+                    </style></head>
+                    <body>
+                        <h2>جامعہ ملیہ اسلامیہ فیصل آباد</h2>
+                        <h3>AI تجزیہ رپورٹ — {dept_ai} — {month_start} تا {month_end}</h3>
+                        <div class="analysis">{analysis.replace(chr(10), '<br>')}</div>
+                        <br><hr>
+                        <h4>خام ڈیٹا:</h4>
+                        <pre style="direction:rtl;text-align:right">{data_summary}</pre>
+                    </body></html>"""
+                    st.download_button("📥 رپورٹ ڈاؤن لوڈ کریں", html_report,
+                                       f"AI_Report_{dept_ai}_{month_start}.html", "text/html")
+                else:
+                    st.warning("اس عرصے میں کوئی ریکارڈ نہیں ملا")
+
+    # ── TAB 2: امتحانی نتائج ──
+    with tab2:
+        st.subheader("امتحانی نتائج کا AI تجزیہ")
+        try:
+            res = supabase.table("exams").select(
+                "dept,exam_type,total,grade,g_students(name,father_name)"
+            ).eq("status", "مکمل").order("end_date", desc=True).limit(50).execute()
+            exam_data = res.data
+        except:
+            try:
+                res = supabase.table("exams").select(
+                    "dept,exam_type,total,grade,students(name,father_name)"
+                ).eq("status", "مکمل").order("end_date", desc=True).limit(50).execute()
+                exam_data = res.data
+            except:
+                exam_data = []
+
+        if exam_data and st.button("🤖 امتحانی تجزیہ", key="ai_exam"):
+            with st.spinner("تجزیہ جاری ہے..."):
+                lines = []
+                for e in exam_data:
+                    stud = e.get("students") or e.get("g_students") or {}
+                    sname = stud.get("name", "نامعلوم")
+                    lines.append(f"- {sname}: {e.get('exam_type')} - نمبر {e.get('total')}/100 - گریڈ {e.get('grade')}")
+
+                data_summary = "\n".join(lines)
+                prompt = "حالیہ امتحانی نتائج کا تجزیہ کریں:"
+                analysis = get_ai_analysis(prompt, data_summary)
+
+                st.markdown("### 🤖 امتحانی تجزیہ")
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #fff8f0, #ffe8d6); 
+                            border-right: 4px solid #e65100; 
+                            border-radius: 10px; 
+                            padding: 20px; 
+                            direction: rtl; 
+                            text-align: right;
+                            font-size: 1.1rem;
+                            line-height: 2;">
+                {analysis.replace(chr(10), '<br>')}
+                </div>
+                """, unsafe_allow_html=True)
+
+    # ── TAB 3: روزانہ کلاس ──
+    with tab3:
+        st.subheader("آج کی کلاس کا AI تجزیہ")
+        today_ai = st.date_input("تاریخ منتخب کریں", date.today(), key="ai_today")
+
+        if st.button("🤖 آج کا تجزیہ", key="ai_daily"):
+            with st.spinner("تجزیہ جاری ہے..."):
+                lines = []
+                try:
+                    res = supabase.table("hifz_records").select(
+                        "t_name,attendance,sq_m,m_m,cleanliness,students(name)"
+                    ).eq("r_date", str(today_ai)).execute()
+                    for r in res.data:
+                        stud = r.get("students") or {}
+                        lines.append(f"- {stud.get('name','')}: حاضری {r.get('attendance')}, سبقی غلطیاں {r.get('sq_m')}, منزل غلطیاں {r.get('m_m')}")
+                except:
+                    pass
+                try:
+                    res = supabase.table("qaida_records").select(
+                        "t_name,attendance,cleanliness,students(name)"
+                    ).eq("r_date", str(today_ai)).execute()
+                    for r in res.data:
+                        stud = r.get("students") or {}
+                        lines.append(f"- {stud.get('name','')}: {r.get('attendance')}")
+                except:
+                    pass
+
+                if lines:
+                    data_summary = "\n".join(lines)
+                    prompt = f"{today_ai} کی کلاس کی مجموعی کارکردگی:"
+                    analysis = get_ai_analysis(prompt, data_summary)
+
+                    st.markdown("### 🤖 آج کا تجزیہ")
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #f0f4ff, #e6edff); 
+                                border-right: 4px solid #1a237e; 
+                                border-radius: 10px; 
+                                padding: 20px; 
+                                direction: rtl; 
+                                text-align: right;
+                                font-size: 1.1rem;
+                                line-height: 2;">
+                    {analysis.replace(chr(10), '<br>')}
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.warning(f"{today_ai} کا کوئی ریکارڈ نہیں")
 # 8.15 بیک اپ & سیٹنگز
 elif selected == "⚙️ بیک اپ & سیٹنگز" and st.session_state.user_type == "admin":
     st.header("بیک اپ اور سیٹنگز")
