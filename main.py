@@ -35,6 +35,11 @@ def ensure_admin():
 
 ensure_admin()
 # ==================== AI تجزیہ فنکشن ====================
+def cleanliness_to_score(clean_str):
+    """صفائی کی سٹرنگ کو عددی سکور میں بدلیں"""
+    mapping = {"بہترین": 3, "اچھی": 2, "قابلِ قبول": 1, "ناقص": 0}
+    return mapping.get(str(clean_str).strip(), 0)
+    
 def get_ai_analysis(prompt, data_summary):
     """Claude API سے تجزیہ لیں"""
     try:
