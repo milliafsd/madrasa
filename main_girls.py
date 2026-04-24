@@ -14,11 +14,8 @@ from supabase import create_client
 SUPABASE_URL = st.secrets["connections"]["supabase"]["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["connections"]["supabase"]["SUPABASE_KEY"]
 
-@st.cache_resource
-def get_supabase_client():
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
-
-supabase = get_supabase_client()
+# یہ ڈالیں
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # تمام ٹیبل نام g_ سے شروع
 T_TEACHERS     = "g_teachers"
