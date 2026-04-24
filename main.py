@@ -1902,7 +1902,7 @@ elif selected == "🤖 AI تجزیہ" and st.session_state.user_type == "admin":
 
                     st.markdown("### 🤖 AI تجزیہ")
                     st.markdown(f"""
-                    <div style="background: linear-gradient(135deg, #f0fff4, #e6ffed); 
+                                <div style="background: linear-gradient(135deg, #f0fff4, #e6ffed); 
                                 border-right: 4px solid #1e5631; 
                                 border-radius: 10px; 
                                 padding: 20px; 
