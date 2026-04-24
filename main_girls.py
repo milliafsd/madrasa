@@ -115,13 +115,15 @@ def safe_str_date(val):
 def verify_login(username, password):
     try:
         res = supabase.table(T_TEACHERS).select("*").eq("name", username).execute()
+        st.sidebar.write("DEBUG:", res.data)  # عارضی debug
         if res.data:
             row = res.data[0]
-            stored = row["password"]
+            # تمام ممکنہ column names آزمائیں
+            stored = row.get("password") or row.get("Password") or ""
             if stored == password or stored == hash_password(password):
                 return row
-    except:
-        pass
+    except Exception as e:
+        st.sidebar.error(f"DEBUG: {e}")
     return None
 
 def change_password(user, old_pass, new_pass):
