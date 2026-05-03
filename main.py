@@ -510,7 +510,7 @@ elif selected == "📊 یومیہ تعلیمی رپورٹ" and st.session_state.
                 hifz_df = hifz_df.rename(columns={
                     "r_date": "تاریخ", "name": "نام", "father_name": "والد کا نام",
                     "roll_no": "شناختی نمبر", "t_name": "استاد",
-                    "surah": "سبق", "lines": "کل ستر", "sq_p": "سبقی", "sq_m": "سبقی (غلطی)",
+                    "surah": "سبق", "lines": "کل سطر", "sq_p": "سبقی", "sq_m": "سبقی (غلطی)",
                     "sq_a": "سبقی (اٹکن)", "m_p": "منزل", "m_m": "منزل (غلطی)",
                     "m_a": "منزل (اٹکن)", "attendance": "حاضری", "cleanliness": "صفائی"
                 })
@@ -773,7 +773,7 @@ elif selected == "📜 ماہانہ رزلٹ کارڈ" and st.session_state.user
             if res.data:
                 df = pd.DataFrame(res.data)
                 df = df.rename(columns={
-                    "r_date": "تاریخ", "attendance": "حاضری", "surah": "سبق", "lines": "کل ستر",
+                    "r_date": "تاریخ", "attendance": "حاضری", "surah": "سبق", "lines": "کل سطر",
                     "sq_p": "سبقی", "sq_m": "سبقی (غلطی)", "sq_a": "سبقی (اٹکن)",
                     "m_p": "منزل", "m_m": "منزل (غلطی)", "m_a": "منزل (اٹکن)", "cleanliness": "صفائی"
                 })
@@ -1650,7 +1650,7 @@ if selected == "📝 روزانہ سبق اندراج" and st.session_state.user
                     a_from = st.text_input("آیت (سے)", key=f"af_{key}")
                     a_to = st.text_input("آیت (تک)", key=f"at_{key}")
                     sabaq_text = f"{surah}: {a_from}-{a_to}"
-                    lines = st.number_input("کل ستر (لائنوں کی تعداد)", min_value=0, value=0, key=f"lines_{key}")
+                    lines = st.number_input("کل سطر (لائنوں کی تعداد)", min_value=0, value=0, key=f"lines_{key}")
                 # سبقی
                 st.write("**سبقی**")
                 col1, col2 = st.columns(2)
